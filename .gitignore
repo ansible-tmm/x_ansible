@@ -1,0 +1,6 @@
+venv/
+vars/credentials.yml
+*.retry
+__pycache__/
+*.pyc
+.env

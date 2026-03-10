@@ -1,0 +1,73 @@
+---
+# ALTERNATIVE: Post to X using only Ansible built-in modules (uri + a shell-based OAuth signer).
+#
+# Drawbacks compared to the custom module approach:
+#   - OAuth 1.0a HMAC-SHA1 signing cannot be done in pure YAML.
+#     This playbook shells out to Python for the signature, which
+#     defeats the purpose of "pure Ansible."
+#   - Error handling is less structured.
+#   - Output parsing is manual.
+#   - Credentials pass through shell environment (still secure, but noisier).
+#
+# Usage:
+#   ansible-playbook post_to_x_uri.yml -e 'post_text=hello from ansible'
+#
+# Required env vars:
+#   X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_TOKEN_SECRET
+
+- name: Post to X (uri-based alternative)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    post_text: ""
+    x_api_url: "https://api.x.com/2/tweets"
+
+  tasks:
+    - name: Validate post text
+      ansible.builtin.assert:
+        that:
+          - post_text | length > 0
+        fail_msg: "No post text provided."
+
+    - name: Build OAuth 1.0a Authorization header
+      ansible.builtin.command:
+        cmd: >-
+          python3 -c "
+          import json, os, sys
+          from requests_oauthlib import OAuth1Session
+
+          session = OAuth1Session(
+              client_key=os.environ['X_API_KEY'],
+              client_secret=os.environ['X_API_SECRET'],
+              resource_owner_key=os.environ['X_ACCESS_TOKEN'],
+              resource_owner_secret=os.environ['X_ACCESS_TOKEN_SECRET'],
+          )
+
+          url = '{{ x_api_url }}'
+          payload = {'text': {{ post_text | to_json }}}
+          req = session.post(url, json=payload)
+
+          print(json.dumps({
+              'status_code': req.status_code,
+              'body': req.json() if req.headers.get('content-type','').startswith('application/json') else {'raw': req.text},
+          }))
+          "
+      register: api_raw
+      changed_when: false
+
+    - name: Parse API response
+      ansible.builtin.set_fact:
+        api_response: "{{ api_raw.stdout | from_json }}"
+
+    - name: Fail on non-201 status
+      ansible.builtin.fail:
+        msg: "X API returned HTTP {{ api_response.status_code }}: {{ api_response.body }}"
+      when: api_response.status_code != 201
+
+    - name: Show result
+      ansible.builtin.debug:
+        msg:
+          post_id: "{{ api_response.body.data.id }}"
+          post_text: "{{ api_response.body.data.text }}"

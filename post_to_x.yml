@@ -1,0 +1,52 @@
+---
+# Usage:
+#   ansible-playbook post_to_x.yml -e 'post_text=hello from ansible'
+#
+# Credentials are read from environment variables by default:
+#   X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_TOKEN_SECRET
+#
+# Or pass them via Ansible Vault — see vars/credentials_example.yml
+
+- name: Post a message to X (Twitter)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    post_text: ""
+    # Not needed when running from the venv (ansible and deps share the same Python).
+    # ansible_python_interpreter: /usr/local/bin/python3
+
+  # Uncomment below to load credentials from an Ansible Vault file:
+  # vars_files:
+  #   - vars/credentials.yml
+
+  tasks:
+    - name: Validate that post text was provided
+      ansible.builtin.assert:
+        that:
+          - post_text | length > 0
+        fail_msg: >-
+          No post text provided. Run with:
+          ansible-playbook post_to_x.yml -e 'post_text=Your message here'
+
+    - name: Publish post to X
+      x_post:
+        text: "{{ post_text }}"
+        # Credentials fall back to env vars automatically.
+        # To use Vault values instead, uncomment:
+        # api_key: "{{ vault_x_api_key }}"
+        # api_secret: "{{ vault_x_api_secret }}"
+        # access_token: "{{ vault_x_access_token }}"
+        # access_token_secret: "{{ vault_x_access_token_secret }}"
+      register: x_result
+      until: x_result is succeeded
+      retries: 3
+      delay: 5
+
+    - name: Show result
+      ansible.builtin.debug:
+        msg:
+          post_id: "{{ x_result.post_id }}"
+          post_text: "{{ x_result.post_text }}"
+          changed: "{{ x_result.changed }}"
