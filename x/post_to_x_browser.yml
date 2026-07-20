@@ -1,0 +1,42 @@
+---
+# Usage:
+#   ansible-playbook post_to_x_browser.yml -e 'post_text=hello from ansible'
+#
+# Prerequisites:
+#   1. pip install playwright && playwright install chromium
+#   2. python files/setup_x_session.py  (one-time login)
+#
+# No API keys needed — uses your saved browser session.
+
+- name: Post to X via browser automation
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    post_text: ""
+
+  tasks:
+    - name: Validate that post text was provided
+      ansible.builtin.assert:
+        that:
+          - post_text | length > 0
+        fail_msg: >-
+          No post text provided. Run with:
+          ansible-playbook post_to_x_browser.yml -e 'post_text=Your message here'
+
+    - name: Publish post to X via browser
+      x_post_browser:
+        text: "{{ post_text }}"
+        headless: true
+      register: x_result
+      until: x_result is succeeded
+      retries: 2
+      delay: 10
+
+    - name: Show result
+      ansible.builtin.debug:
+        msg:
+          post_id: "{{ x_result.post_id }}"
+          message: "{{ x_result.msg }}"
+          changed: "{{ x_result.changed }}"

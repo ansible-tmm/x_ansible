@@ -1,5 +1,5 @@
 venv/
-vars/credentials.yml
+**/vars/credentials.yml
 *.retry
 __pycache__/
 *.pyc

@@ -1,0 +1,52 @@
+---
+# Usage:
+#   ansible-playbook linkedin/post_to_linkedin.yml -e 'post_text=hello from ansible'
+#
+# Credentials are resolved in order:
+#   1. Module parameters (for Vault usage)
+#   2. Environment variables: LINKEDIN_ACCESS_TOKEN, LINKEDIN_PERSON_URN
+#   3. Saved config: ~/.x_ansible/linkedin.json (from setup script)
+#
+# First-time setup:
+#   export LINKEDIN_CLIENT_ID="your-client-id"
+#   export LINKEDIN_CLIENT_SECRET="your-client-secret"
+#   python linkedin/files/setup_linkedin_token.py
+
+- name: Post a message to LinkedIn
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    post_text: ""
+
+  # Uncomment below to load credentials from an Ansible Vault file:
+  # vars_files:
+  #   - vars/credentials.yml
+
+  tasks:
+    - name: Validate that post text was provided
+      ansible.builtin.assert:
+        that:
+          - post_text | length > 0
+        fail_msg: >-
+          No post text provided. Run with:
+          ansible-playbook linkedin/post_to_linkedin.yml -e 'post_text=Your message here'
+
+    - name: Publish post to LinkedIn
+      linkedin_post:
+        text: "{{ post_text }}"
+        # Credentials fall back to env vars / config file automatically.
+        # To use Vault values instead, uncomment:
+        # access_token: "{{ vault_linkedin_access_token }}"
+        # person_urn: "{{ vault_linkedin_person_urn }}"
+      register: li_result
+      until: li_result is succeeded
+      retries: 2
+      delay: 5
+
+    - name: Show result
+      ansible.builtin.debug:
+        msg:
+          post_urn: "{{ li_result.post_urn }}"
+          changed: "{{ li_result.changed }}"

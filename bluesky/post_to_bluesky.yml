@@ -1,0 +1,48 @@
+---
+# Usage:
+#   ansible-playbook bluesky/post_to_bluesky.yml -e 'post_text=hello from ansible'
+#
+# Credentials are read from environment variables by default:
+#   BLUESKY_HANDLE, BLUESKY_APP_PASSWORD
+#
+# Or pass them via Ansible Vault — see bluesky/vars/credentials_example.yml
+
+- name: Post a message to Bluesky
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    post_text: ""
+
+  # Uncomment below to load credentials from an Ansible Vault file:
+  # vars_files:
+  #   - vars/credentials.yml
+
+  tasks:
+    - name: Validate that post text was provided
+      ansible.builtin.assert:
+        that:
+          - post_text | length > 0
+        fail_msg: >-
+          No post text provided. Run with:
+          ansible-playbook bluesky/post_to_bluesky.yml -e 'post_text=Your message here'
+
+    - name: Publish post to Bluesky
+      bluesky_post:
+        text: "{{ post_text }}"
+        # Credentials fall back to env vars automatically.
+        # To use Vault values instead, uncomment:
+        # handle: "{{ vault_bluesky_handle }}"
+        # app_password: "{{ vault_bluesky_app_password }}"
+      register: bsky_result
+      until: bsky_result is succeeded
+      retries: 2
+      delay: 5
+
+    - name: Show result
+      ansible.builtin.debug:
+        msg:
+          uri: "{{ bsky_result.uri }}"
+          cid: "{{ bsky_result.cid }}"
+          changed: "{{ bsky_result.changed }}"
