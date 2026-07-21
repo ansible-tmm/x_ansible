@@ -192,7 +192,6 @@ def run_module():
             payload["content"] = {
                 "article": {
                     "source": url,
-                    "title": "",
                 },
             }
 
