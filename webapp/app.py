@@ -159,9 +159,40 @@ def publish():
     success, output = run_ansible(playbook, extra_vars, timeout=60)
 
     if success:
-        return jsonify({"success": True, "platform": platform})
+        post_url = _extract_post_url(platform, output)
+        return jsonify({"success": True, "platform": platform, "post_url": post_url})
     else:
         return jsonify({"error": f"Publishing to {platform} failed", "details": output}), 500
+
+
+def _extract_post_url(platform, output):
+    """Extract the published post URL from Ansible debug output."""
+    if platform == "linkedin":
+        match = re.search(r"post_urn['\"]?:\s*['\"]?(urn:li:\w+:\d+)", output)
+        if match:
+            return f"https://www.linkedin.com/feed/update/{match.group(1)}"
+    elif platform == "bluesky":
+        match = re.search(r"uri['\"]?:\s*['\"]?(at://[^\s'\"]+)", output)
+        if match:
+            uri = match.group(1)
+            parts = uri.replace("at://", "").split("/")
+            if len(parts) >= 3:
+                did = parts[0]
+                rkey = parts[2]
+                return f"https://bsky.app/profile/{did}/post/{rkey}"
+    elif platform == "x":
+        match = re.search(r"post_id['\"]?:\s*['\"]?(\d+)", output)
+        if match:
+            return f"https://x.com/i/status/{match.group(1)}"
+    elif platform == "reddit":
+        match = re.search(r"https://(?:www\.)?reddit\.com/[^\s'\"]+", output)
+        if match:
+            return match.group(0).rstrip("'\"")
+    elif platform == "threads":
+        match = re.search(r"https://(?:www\.)?threads\.net/[^\s'\"]+", output)
+        if match:
+            return match.group(0).rstrip("'\"")
+    return ""
 
 
 if __name__ == "__main__":

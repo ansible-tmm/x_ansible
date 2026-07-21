@@ -534,9 +534,14 @@ You never sound like a brand, a press release, or a LinkedIn post. Keep it real.
                 const data = await resp.json();
 
                 if (resp.ok) {
-                    status.textContent = 'Published!';
+                    const postUrl = data.post_url;
+                    if (postUrl) {
+                        status.innerHTML = `Published! <a href="${postUrl}" target="_blank" class="post-link">View post &rarr;</a>`;
+                    } else {
+                        status.textContent = 'Published!';
+                    }
                     status.className = 'platform-status success';
-                    log(`${platform}: published successfully (${elapsed}s)`, 'success');
+                    log(`${platform}: published successfully (${elapsed}s)${postUrl ? ' — ' + postUrl : ''}`, 'success');
                 } else {
                     status.textContent = data.error || 'Failed';
                     status.className = 'platform-status error';

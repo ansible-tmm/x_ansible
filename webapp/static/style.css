@@ -374,6 +374,17 @@ input:focus {
     color: #4ade80;
 }
 
+.platform-status.success .post-link {
+    color: #6366f1;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.platform-status.success .post-link:hover {
+    text-decoration: underline;
+    color: #818cf8;
+}
+
 .platform-status.error {
     color: #f87171;
 }
