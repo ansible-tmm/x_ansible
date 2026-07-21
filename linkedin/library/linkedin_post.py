@@ -85,7 +85,9 @@ response_body:
 
 import json
 import os
+import re
 import traceback
+from html.parser import HTMLParser
 from pathlib import Path
 
 from ansible.module_utils.basic import AnsibleModule
@@ -99,6 +101,117 @@ except ImportError:
 POSTS_URL = "https://api.linkedin.com/rest/posts"
 MAX_POST_LENGTH = 3000
 CONFIG_FILE = Path.home() / ".x_ansible" / "linkedin.json"
+
+
+class OGParser(HTMLParser):
+    """Parse OpenGraph and standard meta tags from HTML."""
+
+    def __init__(self):
+        super().__init__()
+        self.og = {}
+        self.meta = {}
+        self._title = ""
+        self._in_title = False
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "meta":
+            attrs_dict = dict(attrs)
+            prop = attrs_dict.get("property", "")
+            name = attrs_dict.get("name", "")
+            content = attrs_dict.get("content", "")
+            if prop.startswith("og:") and content:
+                self.og[prop[3:]] = content
+            elif name and content:
+                self.meta[name] = content
+        elif tag == "title":
+            self._in_title = True
+
+    def handle_data(self, data):
+        if self._in_title:
+            self._title += data
+
+    def handle_endtag(self, tag):
+        if tag == "title":
+            self._in_title = False
+
+    def get_title(self):
+        return self.og.get("title") or self.meta.get("title") or self._title.strip()
+
+    def get_description(self):
+        return self.og.get("description") or self.meta.get("description") or ""
+
+
+def fetch_og_metadata(url):
+    """Fetch title and description from a URL using oEmbed, OG tags, or meta tags."""
+    try:
+        # oEmbed first for YouTube (their HTML is too large to parse efficiently)
+        if "youtu.be" in url or "youtube.com" in url:
+            oembed_url = f"https://www.youtube.com/oembed?url={url}&format=json"
+            try:
+                oembed = requests.get(oembed_url, timeout=5)
+                if oembed.status_code == 200:
+                    data = oembed.json()
+                    return data.get("title"), data.get("author_name", "")
+            except Exception:
+                pass
+
+        resp = requests.get(
+            url,
+            timeout=10,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                              "AppleWebKit/537.36 (KHTML, like Gecko) "
+                              "Chrome/120.0.0.0 Safari/537.36"
+            },
+            allow_redirects=True,
+        )
+        if resp.status_code != 200:
+            return None, None
+
+        html = resp.text[:200000]
+        title = None
+        desc = None
+
+        # Try HTMLParser
+        parser = OGParser()
+        try:
+            parser.feed(html)
+        except Exception:
+            pass
+        title = parser.get_title()
+        desc = parser.get_description()
+
+        # Regex fallback for meta tags
+        if not title:
+            m = re.search(
+                r'<meta\s+(?:property|name)=["\'](?:og:title|title)["\']\s+content=["\']([^"\']+)["\']',
+                html,
+            ) or re.search(
+                r'<meta\s+content=["\']([^"\']+)["\']\s+(?:property|name)=["\'](?:og:title|title)["\']',
+                html,
+            )
+            if m:
+                title = m.group(1)
+
+        if not desc:
+            m = re.search(
+                r'<meta\s+(?:property|name)=["\'](?:og:description|description)["\']\s+content=["\']([^"\']+)["\']',
+                html,
+            ) or re.search(
+                r'<meta\s+content=["\']([^"\']+)["\']\s+(?:property|name)=["\'](?:og:description|description)["\']',
+                html,
+            )
+            if m:
+                desc = m.group(1)
+
+        if not title:
+            m = re.search(r'<title[^>]*>(.*?)</title>', html, re.DOTALL)
+            if m:
+                title = m.group(1).strip()
+
+        return title or None, desc or None
+    except Exception:
+        return None, None
 
 
 def _load_config():
@@ -189,11 +302,12 @@ def run_module():
 
         url = module.params["url"]
         if url:
-            payload["content"] = {
-                "article": {
-                    "source": url,
-                },
-            }
+            og_title, og_desc = fetch_og_metadata(url)
+            if og_title:
+                article = {"source": url, "title": og_title}
+                if og_desc:
+                    article["description"] = og_desc
+                payload["content"] = {"article": article}
 
         resp = requests.post(POSTS_URL, headers=headers, json=payload, timeout=15)
         result["response_status"] = resp.status_code
