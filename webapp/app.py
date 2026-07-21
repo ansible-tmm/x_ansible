@@ -9,6 +9,7 @@ Run with:
 
 import json
 import os
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -147,6 +148,11 @@ def publish():
             extra_vars["url"] = reddit_url
         else:
             extra_vars["text"] = text
+    elif platform == "linkedin":
+        extra_vars = {"post_text": text}
+        url_match = re.search(r'https?://[^\s)}\]>,;"\']+', text)
+        if url_match:
+            extra_vars["url"] = url_match.group(0)
     else:
         extra_vars = {"post_text": text}
 

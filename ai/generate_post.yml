@@ -465,6 +465,7 @@
       when: publish | bool and post_linkedin is defined
       linkedin_post:
         text: "{{ post_linkedin }}"
+        url: "{{ url | default(omit) }}"
       register: li_publish
       until: li_publish is succeeded
       retries: 2

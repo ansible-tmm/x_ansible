@@ -23,6 +23,12 @@ options:
     description: The text content of the post (1-3000 characters).
     required: true
     type: str
+  url:
+    description: >-
+      An optional URL to attach as a link preview card (article share).
+      If provided, LinkedIn will generate a rich preview with title, image, and description.
+    required: false
+    type: str
   access_token:
     description: >-
       LinkedIn OAuth 2.0 access token.
@@ -124,6 +130,7 @@ def _resolve_credential(module_param, env_var, config_key, config):
 def run_module():
     module_args = dict(
         text=dict(type="str", required=True),
+        url=dict(type="str", required=False, default=None),
         access_token=dict(type="str", required=False, default=None, no_log=True),
         person_urn=dict(type="str", required=False, default=None),
         visibility=dict(type="str", default="PUBLIC", choices=["PUBLIC", "CONNECTIONS"]),
@@ -179,6 +186,15 @@ def run_module():
             "distribution": {"feedDistribution": "MAIN_FEED"},
             "lifecycleState": "PUBLISHED",
         }
+
+        url = module.params["url"]
+        if url:
+            payload["content"] = {
+                "article": {
+                    "source": url,
+                    "title": "",
+                },
+            }
 
         resp = requests.post(POSTS_URL, headers=headers, json=payload, timeout=15)
         result["response_status"] = resp.status_code

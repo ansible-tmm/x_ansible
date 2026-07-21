@@ -19,6 +19,7 @@
 
   vars:
     post_text: ""
+    post_url: "{{ url | default('') }}"
 
   # Uncomment below to load credentials from an Ansible Vault file:
   # vars_files:
@@ -36,10 +37,7 @@
     - name: Publish post to LinkedIn
       linkedin_post:
         text: "{{ post_text }}"
-        # Credentials fall back to env vars / config file automatically.
-        # To use Vault values instead, uncomment:
-        # access_token: "{{ vault_linkedin_access_token }}"
-        # person_urn: "{{ vault_linkedin_person_urn }}"
+        url: "{{ post_url | default(omit) }}"
       register: li_result
       until: li_result is succeeded
       retries: 2
