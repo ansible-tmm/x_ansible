@@ -214,6 +214,96 @@ def fetch_og_metadata(url):
         return None, None
 
 
+def fetch_thumbnail_url(url):
+    """Get the thumbnail/og:image URL for a given page."""
+    try:
+        # YouTube oEmbed provides thumbnail_url
+        if "youtu.be" in url or "youtube.com" in url:
+            oembed_url = f"https://www.youtube.com/oembed?url={url}&format=json"
+            resp = requests.get(oembed_url, timeout=5)
+            if resp.status_code == 200:
+                return resp.json().get("thumbnail_url")
+
+        # For other sites, fetch og:image
+        resp = requests.get(
+            url,
+            timeout=10,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                              "AppleWebKit/537.36 (KHTML, like Gecko) "
+                              "Chrome/120.0.0.0 Safari/537.36"
+            },
+            allow_redirects=True,
+        )
+        if resp.status_code != 200:
+            return None
+
+        html = resp.text[:200000]
+        m = re.search(
+            r'<meta\s+(?:property|name)=["\']og:image["\']\s+content=["\']([^"\']+)["\']',
+            html,
+        ) or re.search(
+            r'<meta\s+content=["\']([^"\']+)["\']\s+(?:property|name)=["\']og:image["\']',
+            html,
+        )
+        return m.group(1) if m else None
+    except Exception:
+        return None
+
+
+def upload_thumbnail_to_linkedin(image_url, person_urn, access_token, api_version):
+    """Download an image and upload it to LinkedIn's Images API. Returns image URN or None."""
+    try:
+        # Download the image
+        img_resp = requests.get(image_url, timeout=10, headers={
+            "User-Agent": "Mozilla/5.0"
+        })
+        if img_resp.status_code != 200:
+            return None
+
+        image_data = img_resp.content
+        content_type = img_resp.headers.get("Content-Type", "image/jpeg")
+
+        # Initialize upload
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "X-Restli-Protocol-Version": "2.0.0",
+            "LinkedIn-Version": api_version,
+        }
+        init_resp = requests.post(
+            "https://api.linkedin.com/rest/images?action=initializeUpload",
+            headers=headers,
+            json={"initializeUploadRequest": {"owner": person_urn}},
+            timeout=10,
+        )
+        if init_resp.status_code != 200:
+            return None
+
+        init_data = init_resp.json().get("value", {})
+        upload_url = init_data.get("uploadUrl")
+        image_urn = init_data.get("image")
+        if not upload_url or not image_urn:
+            return None
+
+        # Upload the binary image
+        upload_headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": content_type,
+        }
+        upload_resp = requests.put(
+            upload_url,
+            headers=upload_headers,
+            data=image_data,
+            timeout=15,
+        )
+        if upload_resp.status_code in (200, 201):
+            return image_urn
+        return None
+    except Exception:
+        return None
+
+
 def _load_config():
     """Load saved config from setup script if available."""
     if CONFIG_FILE.exists():
@@ -307,6 +397,15 @@ def run_module():
                 article = {"source": url, "title": og_title}
                 if og_desc:
                     article["description"] = og_desc
+                # Upload thumbnail for rich preview card
+                thumb_url = fetch_thumbnail_url(url)
+                if thumb_url:
+                    image_urn = upload_thumbnail_to_linkedin(
+                        thumb_url, person_urn, access_token,
+                        module.params["api_version"],
+                    )
+                    if image_urn:
+                        article["thumbnail"] = image_urn
                 payload["content"] = {"article": article}
 
         resp = requests.post(POSTS_URL, headers=headers, json=payload, timeout=15)
