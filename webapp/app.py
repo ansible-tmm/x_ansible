@@ -192,6 +192,10 @@ def _extract_post_url(platform, output):
         match = re.search(r"https://(?:www\.)?threads\.net/[^\s'\"]+", output)
         if match:
             return match.group(0).rstrip("'\"")
+        # Fallback: construct from post_id
+        post_id_match = re.search(r"Post ID:\s*(\d+)", output)
+        if post_id_match:
+            return f"https://www.threads.net/post/{post_id_match.group(1)}"
     return ""
 
 

@@ -260,9 +260,13 @@ def run_module():
         result["changed"] = True
         result["post_id"] = post_id
 
-        # Try to get permalink
-        time.sleep(1)
-        result["permalink"] = get_permalink(post_id, access_token)
+        # Try to get permalink (may need a moment to propagate)
+        time.sleep(2)
+        permalink = get_permalink(post_id, access_token)
+        if not permalink:
+            time.sleep(3)
+            permalink = get_permalink(post_id, access_token)
+        result["permalink"] = permalink or ""
 
         module.exit_json(**result)
 
