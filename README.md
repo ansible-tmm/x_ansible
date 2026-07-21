@@ -9,6 +9,8 @@ Post messages to social platforms from Ansible playbooks.
 | [Bluesky](bluesky/) | Free | App Password | Never | [bluesky/README.md](bluesky/README.md) |
 | [LinkedIn](linkedin/) | Free | OAuth 2.0 | Every 60 days | [linkedin/README.md](linkedin/README.md) |
 | [X (Twitter)](x/) | Paid / Free* | OAuth 1.0a / Cookies | Never / Weeks | [x/README.md](x/README.md) |
+| [Reddit](reddit/) | Free | OAuth 2.0 (script) | Per-request | [reddit/README.md](reddit/README.md) |
+| [AI Content Generation](ai/) | Free | Bearer token (MAAS) | Never | [ai/README.md](ai/README.md) |
 
 *X official API requires a paid plan (~$200+/month). Browser automation is free but against TOS.
 
@@ -53,10 +55,25 @@ python x/files/setup_x_session.py
 ansible-playbook x/post_to_x_browser.yml -e 'post_text=hello from ansible'
 ```
 
+### Post to Reddit
+
+```bash
+export REDDIT_CLIENT_ID="your-client-id"
+export REDDIT_CLIENT_SECRET="your-client-secret"
+export REDDIT_USERNAME="your-username"
+export REDDIT_PASSWORD="your-password"
+ansible-playbook reddit/post_to_reddit.yml \
+  -e 'title="My Post Title" url="https://example.com" subreddit="ansible"'
+```
+
 ## Project structure
 
 ```
 x_ansible/
+├── ai/
+│   ├── tasks/ask_ai.yml           # Reusable AI task (any OpenAI-compatible API)
+│   ├── generate_post.yml          # Generate + preview + publish workflow
+│   └── README.md
 ├── bluesky/
 │   ├── library/bluesky_post.py
 │   ├── vars/credentials_example.yml
@@ -74,6 +91,15 @@ x_ansible/
 │   ├── vars/credentials_example.yml
 │   ├── post_to_x.yml, post_to_x_browser.yml
 │   └── README.md
+├── reddit/
+│   ├── library/reddit_post.py
+│   ├── post_to_reddit.yml
+│   └── README.md
+├── webapp/
+│   ├── app.py
+│   ├── generate_only.yml
+│   ├── templates/index.html
+│   └── static/style.css
 ├── venv/                          (gitignored)
 ├── requirements.txt
 ├── ansible.cfg
@@ -120,7 +146,20 @@ automation accordingly (e.g., use external state or locks to prevent duplicates)
 
 ## Common tasks
 
-### Post to multiple platforms at once
+### Generate AI posts for all platforms (preview)
+
+```bash
+export MAAS="your-maas-key"
+ansible-playbook ai/generate_post.yml -e 'content="Just shipped a new feature"'
+```
+
+### Generate + publish to all platforms
+
+```bash
+ansible-playbook ai/generate_post.yml -e 'content="Just shipped a new feature" publish=true'
+```
+
+### Post to multiple platforms manually
 
 ```bash
 ansible-playbook bluesky/post_to_bluesky.yml linkedin/post_to_linkedin.yml \

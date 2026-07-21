@@ -1,0 +1,65 @@
+---
+# Reusable task file: send a prompt to an OpenAI-compatible chat API.
+#
+# Required variables (set before including this file):
+#   - ai_api_url: Chat completions endpoint
+#   - ai_api_key: Bearer token
+#   - ai_model: Model name
+#   - ai_prompt: The prompt text to send
+#   - ai_max_tokens: Max output tokens (int)
+#
+# Optional:
+#   - ai_system_prompt: System message to set persona/behavior
+#
+# Output:
+#   - ai_result.response: The generated text
+#   - ai_result.model: Model used
+#   - ai_result.usage: Token usage metadata
+#   - ai_result.raw_response: Full JSON response
+
+- name: Validate AI API key is set
+  ansible.builtin.assert:
+    that:
+      - ai_api_key | length > 0
+    fail_msg: "MAAS environment variable is not set"
+
+- name: Build messages list
+  ansible.builtin.set_fact:
+    _ai_messages: >-
+      {{
+        ([ {"role": "system", "content": ai_system_prompt} ] if ai_system_prompt | default('') | length > 0 else [])
+        + [ {"role": "user", "content": ai_prompt} ]
+      }}
+
+- name: Send prompt to AI
+  ansible.builtin.uri:
+    url: "{{ ai_api_url }}"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+      Authorization: "Bearer {{ ai_api_key }}"
+    body_format: json
+    body:
+      model: "{{ ai_model }}"
+      messages: "{{ _ai_messages }}"
+      max_tokens: "{{ ai_max_tokens | int }}"
+    return_content: true
+    status_code: [200, 400, 401, 403, 404, 429, 500, 503]
+  register: _ai_response
+  no_log: true
+
+- name: Handle AI API error
+  when: _ai_response.status != 200
+  ansible.builtin.fail:
+    msg: >-
+      AI API returned status {{ _ai_response.status }}:
+      {{ _ai_response.json.error.message | default(_ai_response.json | default('Unknown error')) }}
+
+- name: Store AI response
+  ansible.builtin.set_fact:
+    ai_result:
+      prompt: "{{ ai_prompt }}"
+      response: "{{ _ai_response.json.choices[0].message.content }}"
+      model: "{{ _ai_response.json.model | default(ai_model) }}"
+      usage: "{{ _ai_response.json.usage | default({}) }}"
+      raw_response: "{{ _ai_response.json }}"

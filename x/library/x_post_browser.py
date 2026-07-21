@@ -138,25 +138,16 @@ def post_to_x(text, session_file, headless, timeout_sec):
                 "or the session is invalid. Try re-running setup_x_session.py."
             )
 
-        # Focus and insert text using execCommand (triggers React's input events)
+        # Focus and insert text
         page.click(SELECTORS["compose_box"])
         page.wait_for_timeout(500)
 
-        inserted = page.evaluate(
-            """(text) => {
-                const el = document.querySelector('[data-testid="tweetTextarea_0"]');
-                if (!el) return false;
-                el.focus();
-                return document.execCommand('insertText', false, text);
-            }""",
-            text,
-        )
+        # Type text using keyboard to properly trigger X's React input handling.
+        # execCommand('insertText') with URLs causes X to sometimes strip the
+        # surrounding text and only show the link card.
+        page.keyboard.type(text, delay=20)
 
-        if not inserted:
-            # Fallback: use fill() which dispatches input events
-            page.fill(SELECTORS["compose_box"], text)
-
-        page.wait_for_timeout(1000)
+        page.wait_for_timeout(2000)
 
         # Click the post button via JS to bypass any overlay interception
         clicked = page.evaluate(

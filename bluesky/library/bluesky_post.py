@@ -73,8 +73,11 @@ response:
 
 import json
 import os
+import re
 import traceback
 from datetime import datetime, timezone
+from html.parser import HTMLParser
+from urllib.parse import urljoin
 
 from ansible.module_utils.basic import AnsibleModule
 
@@ -124,6 +127,180 @@ def create_session(pds_url, handle, app_password):
         return None, f"Session creation failed (HTTP {resp.status_code}): {body}"
 
 
+def parse_facets(text):
+    """Detect URLs in text and return Bluesky facets for clickable links.
+
+    Bluesky requires explicit facets with byte offsets to make links clickable.
+    """
+    facets = []
+    url_pattern = re.compile(
+        r'https?://[^\s\)\]\}>,;"\']+',
+        re.IGNORECASE,
+    )
+    text_bytes = text.encode("utf-8")
+
+    for match in url_pattern.finditer(text):
+        url = match.group(0)
+        # Strip trailing punctuation that's likely not part of the URL
+        while url and url[-1] in ".,;:!?)":
+            url = url[:-1]
+
+        start_char = match.start()
+        byte_start = len(text[:start_char].encode("utf-8"))
+        byte_end = byte_start + len(url.encode("utf-8"))
+
+        facets.append({
+            "index": {
+                "byteStart": byte_start,
+                "byteEnd": byte_end,
+            },
+            "features": [
+                {
+                    "$type": "app.bsky.richtext.facet#link",
+                    "uri": url,
+                }
+            ],
+        })
+
+    return facets
+
+
+class OGParser(HTMLParser):
+    """Minimal HTML parser to extract OpenGraph meta tags."""
+
+    def __init__(self):
+        super().__init__()
+        self.og = {}
+        self.title = ""
+        self._in_title = False
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "title":
+            self._in_title = True
+        if tag == "meta":
+            attr_dict = dict(attrs)
+            prop = attr_dict.get("property", "") or attr_dict.get("name", "")
+            content = attr_dict.get("content", "")
+            if prop.startswith("og:") and content:
+                self.og[prop[3:]] = content
+
+    def handle_data(self, data):
+        if self._in_title:
+            self.title += data
+
+    def handle_endtag(self, tag):
+        if tag == "title":
+            self._in_title = False
+
+
+def fetch_link_card(url):
+    """Fetch OpenGraph metadata from a URL. Returns dict with title, description, image_url or None."""
+    try:
+        resp = requests.get(
+            url,
+            timeout=10,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; BlueSkyBot/1.0)"},
+            allow_redirects=True,
+        )
+        resp.raise_for_status()
+    except Exception:
+        return None
+
+    content_type = resp.headers.get("content-type", "")
+    if "html" not in content_type:
+        return None
+
+    parser = OGParser()
+    try:
+        parser.feed(resp.text[:50000])
+    except Exception:
+        return None
+
+    title = parser.og.get("title", "") or parser.title.strip()
+    description = parser.og.get("description", "")
+    image_url = parser.og.get("image", "")
+
+    if not title:
+        return None
+
+    if image_url and "://" not in image_url:
+        image_url = urljoin(url, image_url)
+
+    return {
+        "uri": url,
+        "title": title[:300],
+        "description": description[:1000],
+        "image_url": image_url,
+    }
+
+
+def upload_blob(pds_url, session, image_url):
+    """Download an image and upload it to Bluesky as a blob. Returns blob ref or None."""
+    try:
+        img_resp = requests.get(
+            image_url,
+            timeout=10,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; BlueSkyBot/1.0)"},
+        )
+        img_resp.raise_for_status()
+    except Exception:
+        return None
+
+    content_type = img_resp.headers.get("content-type", "image/jpeg")
+    img_data = img_resp.content
+
+    # Bluesky blob limit is 1MB
+    if len(img_data) > 1_000_000:
+        return None
+
+    try:
+        blob_resp = requests.post(
+            f"{pds_url}/xrpc/com.atproto.repo.uploadBlob",
+            headers={
+                "Authorization": f"Bearer {session['accessJwt']}",
+                "Content-Type": content_type,
+            },
+            data=img_data,
+            timeout=15,
+        )
+        blob_resp.raise_for_status()
+        return blob_resp.json().get("blob")
+    except Exception:
+        return None
+
+
+def build_embed(pds_url, session, text):
+    """Detect the first URL in text and build an external embed with link card."""
+    url_pattern = re.compile(r'https?://[^\s\)\]\}>,;"\']+', re.IGNORECASE)
+    match = url_pattern.search(text)
+    if not match:
+        return None
+
+    url = match.group(0)
+    while url and url[-1] in ".,;:!?)":
+        url = url[:-1]
+
+    card = fetch_link_card(url)
+    if not card:
+        return None
+
+    external = {
+        "uri": card["uri"],
+        "title": card["title"],
+        "description": card["description"],
+    }
+
+    if card.get("image_url"):
+        blob = upload_blob(pds_url, session, card["image_url"])
+        if blob:
+            external["thumb"] = blob
+
+    return {
+        "$type": "app.bsky.embed.external",
+        "external": external,
+    }
+
+
 def create_post(pds_url, session, text):
     """Create a post and return (response_dict, error_msg)."""
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -133,6 +310,14 @@ def create_post(pds_url, session, text):
         "text": text,
         "createdAt": now,
     }
+
+    facets = parse_facets(text)
+    if facets:
+        record["facets"] = facets
+
+    embed = build_embed(pds_url, session, text)
+    if embed:
+        record["embed"] = embed
 
     resp = requests.post(
         f"{pds_url}/xrpc/com.atproto.repo.createRecord",

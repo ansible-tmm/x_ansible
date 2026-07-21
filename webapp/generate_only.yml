@@ -1,0 +1,326 @@
+---
+# Generate platform-specific posts and write them to a JSON file.
+# Used by the webapp to get structured output without parsing ansible stdout.
+#
+# Required vars (passed via --extra-vars):
+#   content: What to post about
+#   output_file: Path to write JSON results
+#
+# Optional vars:
+#   url: Link to include
+#   tone: Tone override
+
+- name: Generate posts for webapp
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    content: ""
+    url: ""
+    tone: ""
+    output_file: "/tmp/x_ansible_generated.json"
+    ai_api_key: "{{ lookup('ansible.builtin.env', 'MAAS') }}"
+    ai_model: "{{ model | default('claude-haiku-4-5') }}"
+    ai_max_tokens: 1024
+    ai_api_url: "https://maas-rhdp.apps.maas.redhatworkshops.io/v1/chat/completions"
+
+    # Platform-specific system prompts optimized for engagement
+    system_prompt_linkedin: |
+      You are an expert LinkedIn content creator who consistently gets high engagement.
+      You understand the LinkedIn algorithm rewards: early comments, dwell time, and saves.
+      Your posts feel like a real person talking - never corporate, never AI-generated.
+      You write posts that make people stop scrolling, feel something, and want to engage.
+
+      CRITICAL RULES:
+      - NEVER use em dashes. Use commas, periods, or "..." instead.
+      - ALWAYS capitalize the first word of every sentence and the first word of the post.
+      - ALWAYS capitalize proper nouns (company names like Cisco, Meraki, Red Hat, Ansible, etc.).
+      - NEVER invent stories, experiences, or anecdotes. You only know what the user tells you.
+        Do NOT say things like "I spent 2 hours doing X" or "I just finished building Y" unless the user explicitly said they did.
+      - NEVER assume the user is the author of a linked article, video, or project.
+        If a URL is provided, treat it as something the user found interesting and is sharing/recommending.
+        Credit the original author or source. Frame it as "check out this thing by [person/org]" not "I built this."
+      - NEVER claim the user has done something the linked content describes unless they explicitly say so.
+        The user might just think the topic is cool. Frame it as enthusiasm about the technology or idea, not a personal accomplishment.
+
+      Techniques you use:
+      - Hook in the first line (pattern interrupt, bold claim, or relatable observation)
+      - Short paragraphs and line breaks for readability
+      - Genuine curiosity or enthusiasm about the topic
+      - End with something that invites comments (a question, a hot take, or "what would you do?")
+      - Hashtags only if they're genuinely used by the target community
+      You never use: "I'm excited to announce", "thrilled to share", "let's connect", corporate jargon, or engagement bait that feels manipulative.
+
+    system_prompt_bluesky: |
+      You are a sharp, witty social media voice on Bluesky - the platform rewards authenticity, humor, and real personality.
+      Your posts feel like a cool, knowledgeable person casually sharing something interesting.
+      Bluesky culture is: anti-corporate, conversational, a bit nerdy, values substance over polish.
+
+      CRITICAL RULES:
+      - NEVER use em dashes. Use commas, periods, or "..." instead.
+      - ALWAYS capitalize the first word of every sentence and the first word of the post.
+      - ALWAYS capitalize proper nouns (company names like Cisco, Meraki, Red Hat, Ansible, etc.).
+      - NEVER invent stories or experiences. You only know what the user tells you.
+      - NEVER assume the user is the author of a linked article/video/project.
+        If sharing a link, frame it as recommending someone else's cool work, not claiming ownership.
+      - NEVER claim the user has done something the linked content describes unless they explicitly say so.
+        Enthusiasm about a topic is not the same as claiming you did it.
+
+      Techniques you use:
+      - Conversational tone like you're texting a smart friend
+      - Wit, personality, or a surprising observation
+      - No try-hard hashtags (Bluesky culture avoids them unless truly relevant)
+      - Get to the point fast - every word earns its place
+      You never sound like a brand, a press release, or a LinkedIn post.
+
+    system_prompt_x: |
+      You are a master of X (Twitter) - the platform where the best posts are concise, punchy, and impossible to scroll past.
+      The algorithm boosts replies, quotes, and bookmarks. You write posts that provoke a reaction.
+
+      CRITICAL RULES:
+      - NEVER use em dashes. Use commas, periods, or "..." instead.
+      - ALWAYS capitalize the first word of every sentence and the first word of the post.
+      - ALWAYS capitalize proper nouns (company names like Cisco, Meraki, Red Hat, Ansible, etc.).
+      - NEVER invent stories or experiences. You only know what the user tells you.
+      - NEVER assume the user is the author of a linked article/video/project.
+        If sharing a link, frame it as signal-boosting someone else's work, not claiming ownership.
+      - NEVER claim the user has done something the linked content describes unless they explicitly say so.
+        The user might just think it's cool. Frame it as enthusiasm, not a personal accomplishment.
+
+      Techniques you use:
+      - Lead with the most interesting part (no build-up, no throat-clearing)
+      - Strong opinions, surprising facts, or relatable observations
+      - Create curiosity gaps or FOMO that makes people click links
+      - Conversational, like a smart person at a bar - not a brand account
+      - Only use hashtags if they're trending or genuinely help discovery (usually skip them)
+      You never sound robotic, corporate, or like you're trying too hard. Every character counts at 280.
+
+    system_prompt_reddit: |
+      You are an experienced Reddit poster who understands what gets upvotes and meaningful discussion.
+      Reddit culture rewards: genuine expertise, helpful information, wit, and authenticity.
+      Different subreddits have different cultures, but universal truths are:
+      people hate self-promotion that doesn't add value, and they love when someone teaches them something new.
+
+      CRITICAL RULES:
+      - NEVER use em dashes. Use commas, periods, or "..." instead.
+      - ALWAYS capitalize the first word of every sentence and the first word of the post.
+      - ALWAYS capitalize proper nouns (company names like Cisco, Meraki, Red Hat, Ansible, etc.).
+      - NEVER invent stories or experiences. You only know what the user tells you.
+      - NEVER assume the user is the author of a linked article/video/project.
+        If sharing a link, frame it as recommending something useful, not self-promotion.
+      - NEVER claim the user has done something the linked content describes unless they explicitly say so.
+
+      You generate TWO things: a title and a body.
+      - Title: compelling, specific, not clickbait. Reddit titles are critical. Max 300 chars.
+      - Body: conversational, adds context the title doesn't cover. Can be longer.
+      You never sound like a marketer. You sound like someone genuinely sharing something they found useful.
+
+  tasks:
+    - name: Generate LinkedIn post
+      block:
+        - name: Set LinkedIn system prompt
+          ansible.builtin.set_fact:
+            ai_system_prompt: "{{ system_prompt_linkedin }}"
+
+        - name: Build LinkedIn prompt
+          ansible.builtin.set_fact:
+            ai_prompt: |
+              Generate a LinkedIn post based on the content below.
+
+              RULES:
+              1. Output ONLY the post text. No quotes, no labels, no preamble.
+              2. Write in first person.
+              3. Max 3000 chars total.
+              {% if url %}
+              4. MANDATORY: Your output MUST contain this exact URL on its own line: {{ url }}
+                 This is non-negotiable. If the URL is missing from your output, the post is invalid.
+                 Place it after a compelling teaser that makes people want to click.
+              {% endif %}
+              {% if tone %}
+              5. TONE: {{ tone }}
+              {% endif %}
+
+              === CONTENT ===
+              {{ content }}
+
+        - name: Call AI for LinkedIn
+          ansible.builtin.include_tasks: ../ai/tasks/ask_ai.yml
+
+        - name: Store LinkedIn post
+          ansible.builtin.set_fact:
+            post_linkedin: "{{ ai_result.response | trim }}"
+
+    - name: Generate Bluesky post
+      block:
+        - name: Set Bluesky system prompt
+          ansible.builtin.set_fact:
+            ai_system_prompt: "{{ system_prompt_bluesky }}"
+
+        - name: Build Bluesky prompt
+          ansible.builtin.set_fact:
+            ai_prompt: |
+              Generate a Bluesky post. HARD LIMIT: 300 characters total.
+
+              RULES:
+              1. Your ENTIRE response must be the post text and nothing else. No commentary, no explanations, no preamble.
+              2. Write in first person.
+              3. Bluesky counts any URL as only 22 characters regardless of actual length.
+                 So your text + 22 (for the URL) + 1 (space before URL) must be under 300.
+              {% if url %}
+              4. Include this URL: {{ url }}
+                 Budget: The URL counts as 22 chars on Bluesky. You have {{ 300 - 23 }} chars (277) for your text (including the space before the URL).
+              {% endif %}
+              {% if tone %}
+              5. TONE: {{ tone }}
+              {% endif %}
+
+              === CONTENT ===
+              {{ content }}
+
+        - name: Call AI for Bluesky
+          ansible.builtin.include_tasks: ../ai/tasks/ask_ai.yml
+
+        - name: Store Bluesky post (first attempt)
+          ansible.builtin.set_fact:
+            post_bluesky: "{{ ai_result.response | trim }}"
+
+        - name: Calculate Bluesky char count (URLs count as 22)
+          ansible.builtin.set_fact:
+            _bsky_length: "{{ post_bluesky | length - (url | default('') | length) + (22 if url | default('') else 0) }}"
+
+        - name: Retry Bluesky if over limit
+          when: _bsky_length | int > 300
+          block:
+            - name: Ask AI to shorten Bluesky post
+              ansible.builtin.set_fact:
+                ai_prompt: |
+                  This post is too long for Bluesky (300 char limit, URLs count as 22 chars).
+                  Shorten it. Keep the same meaning and tone. Output ONLY the shortened post, nothing else.
+                  {% if url %}
+                  The URL must remain: {{ url }}
+                  {% endif %}
+
+                  CURRENT POST:
+                  {{ post_bluesky }}
+
+            - name: Call AI to shorten Bluesky
+              ansible.builtin.include_tasks: ../ai/tasks/ask_ai.yml
+
+            - name: Store shortened Bluesky post
+              ansible.builtin.set_fact:
+                post_bluesky: "{{ ai_result.response | trim }}"
+
+    - name: Generate X post
+      block:
+        - name: Set X system prompt
+          ansible.builtin.set_fact:
+            ai_system_prompt: "{{ system_prompt_x }}"
+
+        - name: Build X prompt
+          ansible.builtin.set_fact:
+            ai_prompt: |
+              Generate an X (Twitter) post. HARD LIMIT: 280 characters total.
+
+              RULES:
+              1. Your ENTIRE response must be the post text and nothing else. No commentary, no explanations, no "Here's my post:", no character count notes.
+              2. Write in first person.
+              3. X counts any URL as exactly 23 characters (t.co shortening) regardless of actual length.
+                 So your text + 23 (for the URL) + 1 (space before URL) must be under 280.
+              {% if url %}
+              4. Include this URL: {{ url }}
+                 Budget: The URL counts as 23 chars on X. You have {{ 280 - 24 }} chars (256) for your text (including the space before the URL).
+              {% endif %}
+              {% if tone %}
+              5. TONE: {{ tone }}
+              {% endif %}
+
+              === CONTENT ===
+              {{ content }}
+
+        - name: Call AI for X
+          ansible.builtin.include_tasks: ../ai/tasks/ask_ai.yml
+
+        - name: Store X post (first attempt)
+          ansible.builtin.set_fact:
+            post_x: "{{ ai_result.response | trim }}"
+
+        - name: Calculate X char count (URLs count as 23)
+          ansible.builtin.set_fact:
+            _x_length: "{{ post_x | length - (url | default('') | length) + (23 if url | default('') else 0) }}"
+
+        - name: Retry X if over limit
+          when: _x_length | int > 280
+          block:
+            - name: Ask AI to shorten X post
+              ansible.builtin.set_fact:
+                ai_prompt: |
+                  This post is too long for X (280 char limit, URLs count as 23 chars via t.co).
+                  Shorten it. Keep the same meaning and tone. Output ONLY the shortened post, nothing else.
+                  {% if url %}
+                  The URL must remain: {{ url }}
+                  {% endif %}
+
+                  CURRENT POST:
+                  {{ post_x }}
+
+            - name: Call AI to shorten X
+              ansible.builtin.include_tasks: ../ai/tasks/ask_ai.yml
+
+            - name: Store shortened X post
+              ansible.builtin.set_fact:
+                post_x: "{{ ai_result.response | trim }}"
+
+    - name: Generate Reddit post
+      block:
+        - name: Set Reddit system prompt
+          ansible.builtin.set_fact:
+            ai_system_prompt: "{{ system_prompt_reddit }}"
+
+        - name: Build Reddit prompt
+          ansible.builtin.set_fact:
+            ai_prompt: |
+              Generate a Reddit post based on the content below.
+              You MUST output EXACTLY two sections in this format:
+
+              TITLE: <your title here>
+              BODY: <your body text here>
+
+              RULES:
+              1. Output ONLY in the format above. No other text, no preamble, no quotes.
+              2. Title must be under 300 characters, compelling, and specific.
+              3. Body should add context that the title doesn't. Be conversational and helpful.
+              4. Write in first person.
+              {% if url %}
+              5. Include this URL in the body: {{ url }}
+              {% endif %}
+              {% if tone %}
+              6. TONE: {{ tone }}
+              {% endif %}
+
+              === CONTENT ===
+              {{ content }}
+
+        - name: Call AI for Reddit
+          ansible.builtin.include_tasks: ../ai/tasks/ask_ai.yml
+
+        - name: Store Reddit post
+          ansible.builtin.set_fact:
+            post_reddit_raw: "{{ ai_result.response | trim }}"
+
+        - name: Parse Reddit title and body
+          ansible.builtin.set_fact:
+            post_reddit_title: "{{ post_reddit_raw | regex_search('(?s)TITLE:\\s*(.+?)\\nBODY:', '\\1') | first | default(post_reddit_raw) | trim }}"
+            post_reddit_body: "{{ post_reddit_raw | regex_search('(?s)BODY:\\s*(.+)', '\\1') | first | default('') | trim }}"
+
+    - name: Write results to JSON file
+      ansible.builtin.copy:
+        content: "{{ output | to_nice_json }}"
+        dest: "{{ output_file }}"
+      vars:
+        output:
+          linkedin: "{{ post_linkedin }}"
+          bluesky: "{{ post_bluesky }}"
+          x: "{{ post_x }}"
+          reddit_title: "{{ post_reddit_title }}"
+          reddit_body: "{{ post_reddit_body }}"

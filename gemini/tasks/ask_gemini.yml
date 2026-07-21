@@ -1,0 +1,112 @@
+---
+# Reusable task file: send a prompt to Gemini and store the response.
+#
+# Authentication (tried in order):
+#   1. API key — GOOGLE_API_KEY env var (simplest)
+#   2. ADC — runs `gcloud auth application-default print-access-token`
+#
+# Required variables (set before including this file):
+#   - gemini_api_key: Google API key (can be empty if using ADC)
+#   - gemini_api_url: Full endpoint URL (with model)
+#   - gemini_prompt: The prompt text to send
+#   - gemini_max_tokens: Max output tokens (int)
+#
+# Output:
+#   - gemini_result.response: The generated text
+#   - gemini_result.usage: Token usage metadata
+#   - gemini_result.model: Model used
+#   - gemini_result.raw_response: Full JSON response
+
+- name: Determine auth method
+  ansible.builtin.set_fact:
+    _gemini_has_api_key: "{{ (gemini_api_key | default('') | length) > 0 }}"
+
+- name: Try to get ADC access token
+  when: not (_gemini_has_api_key | bool)
+  ansible.builtin.command:
+    cmd: gcloud auth application-default print-access-token
+  register: adc_token_result
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Set ADC token fact
+  ansible.builtin.set_fact:
+    _gemini_use_adc: "{{ (not (_gemini_has_api_key | bool)) and (adc_token_result.rc | default(1) == 0) and (adc_token_result.stdout | default('') | length > 0) }}"
+    _gemini_adc_token: "{{ adc_token_result.stdout | default('') | trim }}"
+
+- name: Validate credentials available
+  ansible.builtin.assert:
+    that:
+      - _gemini_has_api_key | bool or _gemini_use_adc | bool
+    fail_msg: >-
+      No Gemini credentials found. Set GOOGLE_API_KEY environment variable
+      or run 'gcloud auth application-default login'.
+
+- name: Send prompt to Gemini (API key)
+  when: _gemini_has_api_key | bool
+  ansible.builtin.uri:
+    url: "{{ gemini_api_url }}?key={{ gemini_api_key }}"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      contents:
+        - parts:
+            - text: "{{ gemini_prompt }}"
+      generationConfig:
+        maxOutputTokens: "{{ gemini_max_tokens | int }}"
+    return_content: true
+    status_code: [200, 400, 401, 403, 404, 429, 500, 503]
+  register: _gemini_resp_key
+  no_log: true
+
+- name: Get GCP project for ADC
+  when: _gemini_use_adc | bool
+  ansible.builtin.command:
+    cmd: gcloud config get project
+  register: gcp_project_result
+  changed_when: false
+  failed_when: false
+
+- name: Send prompt to Gemini (ADC)
+  when: _gemini_use_adc | bool
+  ansible.builtin.uri:
+    url: "{{ gemini_api_url }}"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+      Authorization: "Bearer {{ _gemini_adc_token }}"
+      x-goog-user-project: "{{ gcp_project_result.stdout | default('') | trim }}"
+    body_format: json
+    body:
+      contents:
+        - parts:
+            - text: "{{ gemini_prompt }}"
+      generationConfig:
+        maxOutputTokens: "{{ gemini_max_tokens | int }}"
+    return_content: true
+    status_code: [200, 400, 401, 403, 404, 429, 500, 503]
+  register: _gemini_resp_adc
+  no_log: true
+
+- name: Set unified response
+  ansible.builtin.set_fact:
+    gemini_response: "{{ _gemini_resp_key if (_gemini_has_api_key | bool) else _gemini_resp_adc }}"
+
+- name: Handle Gemini API error
+  when: gemini_response.status != 200
+  ansible.builtin.fail:
+    msg: >-
+      Gemini API returned status {{ gemini_response.status }}:
+      {{ gemini_response.json.error.message | default('Unknown error') }}
+
+- name: Store Gemini response
+  ansible.builtin.set_fact:
+    gemini_result:
+      prompt: "{{ gemini_prompt }}"
+      response: "{{ gemini_response.json.candidates[0].content.parts[0].text }}"
+      model: "{{ gemini_model }}"
+      usage: "{{ gemini_response.json.usageMetadata }}"
+      raw_response: "{{ gemini_response.json }}"

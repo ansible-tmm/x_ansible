@@ -1,0 +1,147 @@
+---
+# Generate a social media post using Gemini, then optionally publish it.
+#
+# Usage:
+#   # Generate only (prints the post, does not publish):
+#   ansible-playbook gemini/generate_post.yml -e 'content="I just released a new Ansible collection for network automation"'
+#
+#   # Generate and publish to LinkedIn:
+#   ansible-playbook gemini/generate_post.yml -e 'content="..." platform=linkedin'
+#
+#   # Generate and publish to Bluesky:
+#   ansible-playbook gemini/generate_post.yml -e 'content="..." platform=bluesky'
+#
+#   # Generate and publish to all platforms:
+#   ansible-playbook gemini/generate_post.yml -e 'content="..." platform=all'
+#
+#   # Pass a video/link URL as context:
+#   ansible-playbook gemini/generate_post.yml -e 'content="Check out this demo" url="https://youtube.com/watch?v=..."'
+#
+#   # Override the platform tone or add instructions:
+#   ansible-playbook gemini/generate_post.yml -e 'content="..." platform=linkedin tone="casual and fun"'
+#
+# Required env var:
+#   GOOGLE_API_KEY
+
+- name: Generate social media post via Gemini
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    content: ""
+    url: ""
+    platform: "none"
+    tone: ""
+    gemini_api_key: "{{ lookup('ansible.builtin.env', 'GOOGLE_API_KEY', default='') }}"
+    gemini_model: "{{ model | default('gemini-2.0-flash') }}"
+    gemini_max_tokens: "{{ max_tokens | default(1024) }}"
+    gemini_api_url: "https://generativelanguage.googleapis.com/v1beta/models/{{ gemini_model }}:generateContent"
+
+  tasks:
+    - name: Validate content was provided
+      ansible.builtin.assert:
+        that:
+          - content | length > 0
+        fail_msg: >-
+          No content provided. Run with:
+          ansible-playbook gemini/generate_post.yml -e 'content="describe your post here"'
+
+    - name: Build prompt for post generation
+      ansible.builtin.set_fact:
+        gemini_prompt: |
+          You are a social media copywriter. Generate a post based on the content below.
+
+          RULES:
+          1. Output ONLY the post text. No quotes, no labels, no preamble, no sign-off.
+          2. Write in first person as the content creator.
+          3. Be authentic and conversational — not corporate or buzzwordy.
+          4. Include relevant hashtags only if they add value (1-3 max).
+          5. Keep it concise and punchy.
+          {% if platform == 'linkedin' %}
+          6. TARGET: LinkedIn. Max 3000 chars. Professional but personable tone. Can be slightly longer and more detailed.
+          {% elif platform == 'bluesky' %}
+          6. TARGET: Bluesky. Max 300 chars. Short, punchy, informal.
+          {% elif platform == 'x' %}
+          6. TARGET: X (Twitter). Max 280 chars. Very concise.
+          {% else %}
+          6. TARGET: General social media. Keep it under 280 chars so it works everywhere.
+          {% endif %}
+          {% if tone %}
+          7. TONE: {{ tone }}
+          {% endif %}
+
+          === CONTENT TO POST ABOUT ===
+
+          {{ content }}
+          {% if url %}
+
+          URL/Link: {{ url }}
+          {% endif %}
+
+    - name: Generate post via Gemini
+      ansible.builtin.include_tasks: tasks/ask_gemini.yml
+
+    - name: Display generated post
+      ansible.builtin.debug:
+        msg:
+          - "========================================="
+          - "  Generated Post ({{ platform }})"
+          - "  Model: {{ gemini_result.model }}"
+          - "========================================="
+          - ""
+          - "{{ gemini_result.response }}"
+          - ""
+          - "========================================="
+          - "Prompt tokens:  {{ gemini_result.usage.promptTokenCount }}"
+          - "Output tokens:  {{ gemini_result.usage.candidatesTokenCount }}"
+          - "========================================="
+
+    - name: Set post text for publishing
+      ansible.builtin.set_fact:
+        generated_post: "{{ gemini_result.response | trim }}"
+
+    # --- Publish to LinkedIn ---
+    - name: Publish to LinkedIn
+      when: platform in ['linkedin', 'all']
+      linkedin_post:
+        text: "{{ generated_post }}"
+      register: li_publish
+      until: li_publish is succeeded
+      retries: 2
+      delay: 5
+
+    - name: LinkedIn publish result
+      when: platform in ['linkedin', 'all'] and li_publish is succeeded
+      ansible.builtin.debug:
+        msg: "LinkedIn: posted ({{ li_publish.post_urn }})"
+
+    # --- Publish to Bluesky ---
+    - name: Publish to Bluesky
+      when: platform in ['bluesky', 'all']
+      bluesky_post:
+        text: "{{ generated_post }}"
+      register: bsky_publish
+      until: bsky_publish is succeeded
+      retries: 2
+      delay: 5
+
+    - name: Bluesky publish result
+      when: platform in ['bluesky', 'all'] and bsky_publish is succeeded
+      ansible.builtin.debug:
+        msg: "Bluesky: posted ({{ bsky_publish.uri }})"
+
+    # --- Publish to X ---
+    - name: Publish to X
+      when: platform in ['x', 'all']
+      x_post_browser:
+        text: "{{ generated_post }}"
+      register: x_publish
+      until: x_publish is succeeded
+      retries: 2
+      delay: 10
+
+    - name: X publish result
+      when: platform in ['x', 'all'] and x_publish is succeeded
+      ansible.builtin.debug:
+        msg: "X: posted ({{ x_publish.post_id }})"

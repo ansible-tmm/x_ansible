@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Social Media Post Generator</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Social Media Post Generator</h1>
+            <p class="subtitle">Generate AI-tailored posts for all your platforms</p>
+        </header>
+
+        <!-- Input Section -->
+        <section class="input-section">
+            <div class="form-group">
+                <label for="content">What do you want to post about?</label>
+                <textarea id="content" placeholder="Describe what you want to share. For example: I just released a new Ansible collection that automates network config backups..." rows="4"></textarea>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="url">URL / Link (optional)</label>
+                    <input type="url" id="url" placeholder="https://... (will be included in each post)">
+                </div>
+                <div class="form-group">
+                    <label for="tone">Tone (optional)</label>
+                    <input type="text" id="tone" placeholder="e.g. casual, excited, professional">
+                </div>
+            </div>
+            <button id="generate-btn" class="btn btn-primary" onclick="generatePosts()">
+                <span class="btn-text">Generate Posts</span>
+                <span class="spinner hidden"></span>
+            </button>
+
+            <!-- Collapsible System Prompts -->
+            <div class="system-prompts-section">
+                <div class="system-prompts-toggle" onclick="toggleSystemPrompts()">
+                    <span>System Prompts (AI Persona)</span>
+                    <span id="sp-toggle" class="sp-toggle">&#9654;</span>
+                </div>
+                <div id="system-prompts-body" class="system-prompts-body collapsed">
+                    <p class="sp-hint">These control how the AI writes for each platform. Edit to change the style, or leave as-is.</p>
+
+                    <div class="form-group">
+                        <label for="sp-linkedin">LinkedIn</label>
+                        <textarea id="sp-linkedin" rows="8">You are an expert LinkedIn content creator who consistently gets high engagement.
+You understand the LinkedIn algorithm rewards: early comments, dwell time, and saves.
+Your posts feel like a real person talking - never corporate, never AI-generated.
+You write posts that make people stop scrolling, feel something, and want to engage.
+
+CRITICAL RULES:
+- NEVER use em dashes. Use commas, periods, or "..." instead.
+- ALWAYS capitalize the first word of every sentence and the first word of the post.
+- ALWAYS capitalize proper nouns (company names like Cisco, Meraki, Red Hat, Ansible, etc.).
+- NEVER invent stories, experiences, or anecdotes. You only know what the user tells you. Do NOT say things like "I spent 2 hours doing X" or "I just finished building Y" unless the user explicitly said they did.
+- NEVER assume the user is the author of a linked article, video, or project. If a URL is provided, treat it as something the user found interesting and is sharing/recommending. Credit the original author or source. Frame it as "check out this thing by [person/org]" not "I built this."
+- NEVER claim the user has done something the linked content describes unless they explicitly say so. The user might just think the topic is cool. Frame it as enthusiasm about the technology or idea, not a personal accomplishment.
+
+Techniques you use:
+- Hook in the first line (pattern interrupt, bold claim, or relatable observation)
+- Short paragraphs and line breaks for readability
+- Genuine curiosity or enthusiasm about the topic
+- End with something that invites comments (a question, a hot take, or "what would you do?")
+- Hashtags only if they're genuinely used by the target community
+You never use: "I'm excited to announce", "thrilled to share", "let's connect", corporate jargon, or engagement bait that feels manipulative.</textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="sp-bluesky">Bluesky</label>
+                        <textarea id="sp-bluesky" rows="7">You are a sharp, witty social media voice on Bluesky - the platform rewards authenticity, humor, and real personality.
+Your posts feel like a cool, knowledgeable person casually sharing something interesting.
+Bluesky culture is: anti-corporate, conversational, a bit nerdy, values substance over polish.
+
+CRITICAL RULES:
+- NEVER use em dashes. Use commas, periods, or "..." instead.
+- ALWAYS capitalize the first word of every sentence and the first word of the post.
+- ALWAYS capitalize proper nouns (company names like Cisco, Meraki, Red Hat, Ansible, etc.).
+- NEVER invent stories or experiences. You only know what the user tells you.
+- NEVER assume the user is the author of a linked article/video/project. If sharing a link, frame it as recommending someone else's cool work, not claiming ownership.
+- NEVER claim the user has done something the linked content describes unless they explicitly say so. Enthusiasm about a topic is not the same as claiming you did it.
+
+Techniques you use:
+- Conversational tone like you're texting a smart friend
+- Wit, personality, or a surprising observation
+- No try-hard hashtags (Bluesky culture avoids them unless truly relevant)
+- Get to the point fast - every word earns its place
+You never sound like a brand, a press release, or a LinkedIn post.</textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="sp-x">X (Twitter)</label>
+                        <textarea id="sp-x" rows="7">You are a master of X (Twitter) - the platform where the best posts are concise, punchy, and impossible to scroll past.
+The algorithm boosts replies, quotes, and bookmarks. You write posts that provoke a reaction.
+
+CRITICAL RULES:
+- NEVER use em dashes. Use commas, periods, or "..." instead.
+- ALWAYS capitalize the first word of every sentence and the first word of the post.
+- ALWAYS capitalize proper nouns (company names like Cisco, Meraki, Red Hat, Ansible, etc.).
+- NEVER invent stories or experiences. You only know what the user tells you.
+- NEVER assume the user is the author of a linked article/video/project. If sharing a link, frame it as signal-boosting someone else's work, not claiming ownership.
+- NEVER claim the user has done something the linked content describes unless they explicitly say so. The user might just think it's cool. Frame it as enthusiasm, not a personal accomplishment.
+
+Techniques you use:
+- Lead with the most interesting part (no build-up, no throat-clearing)
+- Strong opinions, surprising facts, or relatable observations
+- Create curiosity gaps or FOMO that makes people click links
+- Conversational, like a smart person at a bar - not a brand account
+- Only use hashtags if they're trending or genuinely help discovery (usually skip them)
+You never sound robotic, corporate, or like you're trying too hard. Every character counts at 280.</textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="sp-reddit">Reddit</label>
+                        <textarea id="sp-reddit" rows="7">You are an experienced Reddit poster who understands what gets upvotes and meaningful discussion.
+Reddit culture rewards: genuine expertise, helpful information, wit, and authenticity.
+Different subreddits have different cultures, but universal truths are: people hate self-promotion that doesn't add value, and they love when someone teaches them something new.
+
+CRITICAL RULES:
+- NEVER use em dashes. Use commas, periods, or "..." instead.
+- ALWAYS capitalize the first word of every sentence and the first word of the post.
+- ALWAYS capitalize proper nouns (company names like Cisco, Meraki, Red Hat, Ansible, etc.).
+- NEVER invent stories or experiences. You only know what the user tells you.
+- NEVER assume the user is the author of a linked article/video/project. If sharing a link, frame it as recommending something useful, not self-promotion.
+- NEVER claim the user has done something the linked content describes unless they explicitly say so.
+
+You generate TWO things: a title and a body.
+- Title: compelling, specific, not clickbait. Reddit titles are critical. Max 300 chars.
+- Body: conversational, adds context the title doesn't cover. Can be longer.
+You never sound like a marketer. You sound like someone genuinely sharing something they found useful.</textarea>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Error Display -->
+        <div id="error-banner" class="error-banner hidden"></div>
+
+        <!-- Activity Log -->
+        <section id="activity-log" class="activity-log">
+            <div class="log-header" onclick="toggleLog()">
+                <span>Activity Log</span>
+                <span id="log-badge" class="log-badge hidden">0</span>
+                <span id="log-toggle" class="log-toggle">&#9660;</span>
+            </div>
+            <div id="log-body" class="log-body">
+                <div id="log-entries" class="log-entries">
+                    <div class="log-entry info">Ready. Enter content and click Generate.</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Preview Section -->
+        <section id="preview-section" class="preview-section hidden">
+            <h2>Preview & Edit</h2>
+            <p class="preview-hint">Edit the posts below. The URL is included and counts toward the character limit.</p>
+
+            <div class="platform-card" data-platform="linkedin">
+                <div class="platform-header">
+                    <span class="platform-label">LinkedIn</span>
+                    <span class="char-counter" data-max="3000"><span class="char-current">0</span> / 3000</span>
+                </div>
+                <textarea class="post-textarea" data-platform="linkedin" data-max="3000" rows="5" placeholder="LinkedIn post will appear here..."></textarea>
+                <button class="btn btn-publish" onclick="publishOne('linkedin')">
+                    <span class="btn-text">Publish to LinkedIn</span>
+                    <span class="spinner hidden"></span>
+                </button>
+                <div class="platform-status"></div>
+            </div>
+
+            <div class="platform-card" data-platform="bluesky">
+                <div class="platform-header">
+                    <span class="platform-label">Bluesky</span>
+                    <span class="char-counter" data-max="300"><span class="char-current">0</span> / 300</span>
+                </div>
+                <textarea class="post-textarea" data-platform="bluesky" data-max="300" rows="3" placeholder="Bluesky post will appear here..."></textarea>
+                <button class="btn btn-publish" onclick="publishOne('bluesky')">
+                    <span class="btn-text">Publish to Bluesky</span>
+                    <span class="spinner hidden"></span>
+                </button>
+                <div class="platform-status"></div>
+            </div>
+
+            <div class="platform-card" data-platform="x">
+                <div class="platform-header">
+                    <span class="platform-label">X (Twitter)</span>
+                    <span class="char-counter" data-max="280"><span class="char-current">0</span> / 280</span>
+                </div>
+                <textarea class="post-textarea" data-platform="x" data-max="280" rows="3" placeholder="X post will appear here..."></textarea>
+                <button class="btn btn-publish" onclick="publishOne('x')">
+                    <span class="btn-text">Publish to X</span>
+                    <span class="spinner hidden"></span>
+                </button>
+                <div class="platform-status"></div>
+            </div>
+
+            <div class="platform-card" data-platform="reddit">
+                <div class="platform-header">
+                    <span class="platform-label">Reddit</span>
+                    <span class="char-counter" data-max="300"><span class="char-current">0</span> / 300 (title)</span>
+                </div>
+                <div class="reddit-fields">
+                    <div class="form-group">
+                        <label for="reddit-title">Title</label>
+                        <input type="text" id="reddit-title" class="reddit-title-input" data-platform="reddit" maxlength="300" placeholder="Reddit post title..." oninput="updateRedditTitleCount()">
+                    </div>
+                    <div class="form-group">
+                        <label for="reddit-subreddit">Subreddit</label>
+                        <input type="text" id="reddit-subreddit" placeholder="e.g. ansible, networking, u_YourUsername" value="">
+                    </div>
+                </div>
+                <textarea class="post-textarea" data-platform="reddit" data-max="40000" rows="5" placeholder="Reddit post body will appear here..."></textarea>
+                <button class="btn btn-publish" onclick="publishOne('reddit')">
+                    <span class="btn-text">Publish to Reddit</span>
+                    <span class="spinner hidden"></span>
+                </button>
+                <div class="platform-status"></div>
+            </div>
+
+            <button id="publish-all-btn" class="btn btn-primary btn-publish-all" onclick="publishAll()">
+                <span class="btn-text">Publish All</span>
+                <span class="spinner hidden"></span>
+            </button>
+        </section>
+    </div>
+
+    <script>
+        // Activity log
+        function log(message, level = 'info') {
+            const entries = document.getElementById('log-entries');
+            const entry = document.createElement('div');
+            const time = new Date().toLocaleTimeString();
+            entry.className = `log-entry ${level}`;
+            entry.innerHTML = `<span class="log-time">${time}</span> ${message}`;
+            entries.appendChild(entry);
+            entries.scrollTop = entries.scrollHeight;
+
+            // Update badge
+            const badge = document.getElementById('log-badge');
+            const body = document.getElementById('log-body');
+            if (body.classList.contains('collapsed')) {
+                const count = parseInt(badge.textContent || '0') + 1;
+                badge.textContent = count;
+                badge.classList.remove('hidden');
+            }
+        }
+
+        function toggleLog() {
+            const body = document.getElementById('log-body');
+            const toggle = document.getElementById('log-toggle');
+            const badge = document.getElementById('log-badge');
+            body.classList.toggle('collapsed');
+            toggle.innerHTML = body.classList.contains('collapsed') ? '&#9654;' : '&#9660;';
+            if (!body.classList.contains('collapsed')) {
+                badge.classList.add('hidden');
+                badge.textContent = '0';
+            }
+        }
+
+        // Character counter logic
+        document.querySelectorAll('.post-textarea').forEach(textarea => {
+            textarea.addEventListener('input', () => updateCharCount(textarea));
+        });
+
+        function updateCharCount(textarea) {
+            const max = parseInt(textarea.dataset.max);
+            const platform = textarea.dataset.platform;
+            const text = textarea.value;
+            let current = text.length;
+            const urlRegex = /https?:\/\/[^\s)}\]>,;"']+/gi;
+
+            // Bluesky counts any URL as 22 chars regardless of actual length
+            if (platform === 'bluesky') {
+                const urls = text.match(urlRegex) || [];
+                urls.forEach(url => {
+                    current = current - url.length + 22;
+                });
+            }
+
+            // X counts any URL as 23 chars (t.co shortening)
+            if (platform === 'x') {
+                const urls = text.match(urlRegex) || [];
+                urls.forEach(url => {
+                    current = current - url.length + 23;
+                });
+            }
+
+            const card = textarea.closest('.platform-card');
+            const counter = card.querySelector('.char-current');
+            counter.textContent = current;
+
+            const counterWrap = card.querySelector('.char-counter');
+            if (current > max) {
+                counterWrap.classList.add('over-limit');
+            } else {
+                counterWrap.classList.remove('over-limit');
+            }
+        }
+
+        function showError(msg) {
+            const banner = document.getElementById('error-banner');
+            banner.textContent = msg;
+            banner.classList.remove('hidden');
+        }
+
+        function hideError() {
+            document.getElementById('error-banner').classList.add('hidden');
+        }
+
+        function setLoading(btn, loading) {
+            const text = btn.querySelector('.btn-text');
+            const spinner = btn.querySelector('.spinner');
+            if (loading) {
+                text.classList.add('hidden');
+                spinner.classList.remove('hidden');
+                btn.disabled = true;
+            } else {
+                text.classList.remove('hidden');
+                spinner.classList.add('hidden');
+                btn.disabled = false;
+            }
+        }
+
+        function toggleSystemPrompts() {
+            const body = document.getElementById('system-prompts-body');
+            const toggle = document.getElementById('sp-toggle');
+            body.classList.toggle('collapsed');
+            toggle.innerHTML = body.classList.contains('collapsed') ? '&#9654;' : '&#9660;';
+        }
+
+        async function generatePosts() {
+            const content = document.getElementById('content').value.trim();
+            const url = document.getElementById('url').value.trim();
+            const tone = document.getElementById('tone').value.trim();
+
+            const system_prompts = {
+                linkedin: document.getElementById('sp-linkedin').value.trim(),
+                bluesky: document.getElementById('sp-bluesky').value.trim(),
+                x: document.getElementById('sp-x').value.trim(),
+                reddit: document.getElementById('sp-reddit').value.trim(),
+            };
+
+            if (!content) {
+                showError('Please describe what you want to post about.');
+                return;
+            }
+
+            hideError();
+            const btn = document.getElementById('generate-btn');
+            setLoading(btn, true);
+
+            log('Starting generation...', 'info');
+            log(`Content: "${content.substring(0, 80)}${content.length > 80 ? '...' : ''}"`, 'info');
+            if (url) log(`URL to include: ${url}`, 'info');
+            if (tone) log(`Tone: ${tone}`, 'info');
+            log('Running ansible-playbook webapp/generate_only.yml (calls AI 3 times)...', 'pending');
+
+            // Clear previous statuses
+            document.querySelectorAll('.platform-status').forEach(el => {
+                el.textContent = '';
+                el.className = 'platform-status';
+            });
+
+            try {
+                const startTime = Date.now();
+                const resp = await fetch('/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content, url, tone, system_prompts }),
+                });
+
+                const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                const data = await resp.json();
+
+                if (!resp.ok) {
+                    log(`Generation FAILED after ${elapsed}s`, 'error');
+                    log(`Error: ${data.error}`, 'error');
+                    if (data.details) {
+                        // Extract key error lines from ansible output
+                        const lines = data.details.split('\n');
+                        const errorLines = lines.filter(l =>
+                            l.includes('fatal:') || l.includes('FAILED') || l.includes('msg":')
+                        ).slice(0, 3);
+                        errorLines.forEach(l => log(l.trim(), 'error'));
+                    }
+                    showError(data.error);
+                    return;
+                }
+
+                log(`Generation complete in ${elapsed}s`, 'success');
+                log(`LinkedIn: ${data.linkedin.length} chars`, 'success');
+                log(`Bluesky: ${data.bluesky.length} chars`, 'success');
+                log(`X: ${data.x.length} chars`, 'success');
+                if (data.reddit_title) log(`Reddit title: ${data.reddit_title.length} chars`, 'success');
+                if (data.reddit_body) log(`Reddit body: ${data.reddit_body.length} chars`, 'success');
+
+                // Populate textareas
+                const platforms = ['linkedin', 'bluesky', 'x'];
+                platforms.forEach(platform => {
+                    const textarea = document.querySelector(`.post-textarea[data-platform="${platform}"]`);
+                    textarea.value = data[platform] || '';
+                    updateCharCount(textarea);
+                });
+
+                // Populate Reddit fields
+                document.getElementById('reddit-title').value = data.reddit_title || '';
+                const redditTextarea = document.querySelector('.post-textarea[data-platform="reddit"]');
+                redditTextarea.value = data.reddit_body || '';
+                updateCharCount(redditTextarea);
+                updateRedditTitleCount();
+
+                // Show preview section
+                document.getElementById('preview-section').classList.remove('hidden');
+
+            } catch (e) {
+                log(`Network error: ${e.message}`, 'error');
+                showError('Network error: ' + e.message);
+            } finally {
+                setLoading(btn, false);
+            }
+        }
+
+        function updateRedditTitleCount() {
+            const input = document.getElementById('reddit-title');
+            const card = input.closest('.platform-card');
+            const counter = card.querySelector('.char-current');
+            counter.textContent = input.value.length;
+            const counterWrap = card.querySelector('.char-counter');
+            if (input.value.length > 300) {
+                counterWrap.classList.add('over-limit');
+            } else {
+                counterWrap.classList.remove('over-limit');
+            }
+        }
+
+        async function publishOne(platform) {
+            const card = document.querySelector(`.platform-card[data-platform="${platform}"]`);
+            const textarea = card.querySelector('.post-textarea');
+            const btn = card.querySelector('.btn-publish');
+            const status = card.querySelector('.platform-status');
+            const text = textarea.value.trim();
+
+            if (platform === 'reddit') {
+                const redditTitle = document.getElementById('reddit-title').value.trim();
+                const redditSubreddit = document.getElementById('reddit-subreddit').value.trim();
+                if (!redditTitle) {
+                    status.textContent = 'Reddit title is required';
+                    status.className = 'platform-status error';
+                    return;
+                }
+                if (!redditSubreddit) {
+                    status.textContent = 'Subreddit is required';
+                    status.className = 'platform-status error';
+                    return;
+                }
+            }
+
+            if (!text && platform !== 'reddit') {
+                status.textContent = 'No text to publish';
+                status.className = 'platform-status error';
+                return;
+            }
+
+            const max = parseInt(textarea.dataset.max);
+            if (text.length > max) {
+                status.textContent = `Over character limit (${text.length}/${max})`;
+                status.className = 'platform-status error';
+                log(`${platform}: blocked — over char limit (${text.length}/${max})`, 'error');
+                return;
+            }
+
+            setLoading(btn, true);
+            status.textContent = 'Publishing...';
+            status.className = 'platform-status pending';
+
+            log(`Publishing to ${platform}...`, 'pending');
+            log(`Running ansible-playbook ${platform}/post_to_${platform === 'x' ? 'x_browser' : platform}.yml`, 'info');
+
+            let payload = { platform, text };
+            if (platform === 'reddit') {
+                payload.reddit_title = document.getElementById('reddit-title').value.trim();
+                payload.reddit_subreddit = document.getElementById('reddit-subreddit').value.trim();
+                const urlInput = document.getElementById('url').value.trim();
+                if (urlInput) payload.reddit_url = urlInput;
+            }
+
+            try {
+                const startTime = Date.now();
+                const resp = await fetch('/publish', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+
+                const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                const data = await resp.json();
+
+                if (resp.ok) {
+                    status.textContent = 'Published!';
+                    status.className = 'platform-status success';
+                    log(`${platform}: published successfully (${elapsed}s)`, 'success');
+                } else {
+                    status.textContent = data.error || 'Failed';
+                    status.className = 'platform-status error';
+                    log(`${platform}: FAILED (${elapsed}s) — ${data.error}`, 'error');
+                    if (data.details) {
+                        const lines = data.details.split('\n');
+                        const errorLines = lines.filter(l =>
+                            l.includes('fatal:') || l.includes('FAILED') || l.includes('msg":')
+                        ).slice(0, 3);
+                        errorLines.forEach(l => log(l.trim(), 'error'));
+                    }
+                }
+            } catch (e) {
+                status.textContent = 'Network error: ' + e.message;
+                status.className = 'platform-status error';
+                log(`${platform}: network error — ${e.message}`, 'error');
+            } finally {
+                setLoading(btn, false);
+            }
+        }
+
+        async function publishAll() {
+            const btn = document.getElementById('publish-all-btn');
+            setLoading(btn, true);
+            log('Publishing to all platforms...', 'info');
+
+            const platforms = ['linkedin', 'bluesky', 'x', 'reddit'];
+            const promises = platforms.map(p => publishOne(p));
+            await Promise.all(promises);
+
+            setLoading(btn, false);
+            log('Publish all complete.', 'info');
+        }
+    </script>
+</body>
+</html>

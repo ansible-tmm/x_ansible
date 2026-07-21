@@ -1,0 +1,49 @@
+---
+- name: Post to Reddit
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    post_title: "{{ title | default('') }}"
+    post_text: "{{ text | default('') }}"
+    post_url: "{{ url | default('') }}"
+    target_subreddit: "{{ subreddit | default(lookup('env', 'REDDIT_SUBREDDIT')) }}"
+    post_flair_id: "{{ flair_id | default('') }}"
+
+  tasks:
+    - name: Validate input
+      ansible.builtin.assert:
+        that:
+          - post_title | length > 0
+          - post_title | length <= 300
+          - (post_text | length > 0) or (post_url | length > 0)
+          - target_subreddit | length > 0
+        fail_msg: >-
+          Required: title (1-300 chars), either text or url, and subreddit.
+          Pass via --extra-vars or env: REDDIT_SUBREDDIT
+
+    - name: Submit link post to Reddit
+      reddit_post:
+        title: "{{ post_title }}"
+        url: "{{ post_url }}"
+        subreddit: "{{ target_subreddit }}"
+        flair_id: "{{ post_flair_id | default(omit) }}"
+      register: reddit_result
+      when: post_url | length > 0
+
+    - name: Submit text post to Reddit
+      reddit_post:
+        title: "{{ post_title }}"
+        text: "{{ post_text }}"
+        subreddit: "{{ target_subreddit }}"
+        flair_id: "{{ post_flair_id | default(omit) }}"
+      register: reddit_result
+      when: post_url | length == 0
+
+    - name: Display post result
+      ansible.builtin.debug:
+        msg: |
+          Reddit post published!
+          Post ID: {{ reddit_result.post_id }}
+          URL:     {{ reddit_result.post_url }}
