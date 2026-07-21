@@ -10,6 +10,7 @@ Post messages to social platforms from Ansible playbooks.
 | [LinkedIn](linkedin/) | Free | OAuth 2.0 | Every 60 days | [linkedin/README.md](linkedin/README.md) |
 | [X (Twitter)](x/) | Paid / Free* | OAuth 1.0a / Cookies | Never / Weeks | [x/README.md](x/README.md) |
 | [Reddit](reddit/) | Free | OAuth 2.0 (script) | Per-request | [reddit/README.md](reddit/README.md) |
+| [Threads](threads/) | Free | OAuth 2.0 | Every 60 days | [threads/README.md](threads/README.md) |
 | [AI Content Generation](ai/) | Free | Bearer token (MAAS) | Never | [ai/README.md](ai/README.md) |
 
 *X official API requires a paid plan (~$200+/month). Browser automation is free but against TOS.
@@ -66,6 +67,18 @@ ansible-playbook reddit/post_to_reddit.yml \
   -e 'title="My Post Title" url="https://example.com" subreddit="ansible"'
 ```
 
+### Post to Threads
+
+```bash
+# First time only
+export THREADS_APP_ID="your-threads-app-id"
+export THREADS_APP_SECRET="your-threads-app-secret"
+python threads/files/setup_threads_token.py
+
+# Then post
+ansible-playbook threads/post_to_threads.yml -e 'post_text=hello from ansible'
+```
+
 ## Project structure
 
 ```
@@ -94,6 +107,11 @@ x_ansible/
 ├── reddit/
 │   ├── library/reddit_post.py
 │   ├── post_to_reddit.yml
+│   └── README.md
+├── threads/
+│   ├── library/threads_post.py
+│   ├── files/setup_threads_token.py
+│   ├── post_to_threads.yml
 │   └── README.md
 ├── webapp/
 │   ├── app.py

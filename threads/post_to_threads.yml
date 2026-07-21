@@ -1,0 +1,32 @@
+---
+- name: Post to Threads
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    post_text: "{{ text | default('') }}"
+    post_url: "{{ url | default('') }}"
+
+  tasks:
+    - name: Validate input
+      ansible.builtin.assert:
+        that:
+          - post_text | length > 0
+          - post_text | length <= 500
+        fail_msg: >-
+          Required: text (1-500 chars).
+          Pass via --extra-vars: -e 'post_text="your message"'
+
+    - name: Publish to Threads
+      threads_post:
+        text: "{{ post_text }}"
+        url: "{{ post_url | default(omit) }}"
+      register: threads_result
+
+    - name: Display post result
+      ansible.builtin.debug:
+        msg: |
+          Threads post published!
+          Post ID:   {{ threads_result.post_id }}
+          Permalink: {{ threads_result.permalink }}

@@ -26,6 +26,7 @@ PLATFORM_PLAYBOOKS = {
     "bluesky": PROJECT_ROOT / "bluesky" / "post_to_bluesky.yml",
     "x": PROJECT_ROOT / "x" / "post_to_x_browser.yml",
     "reddit": PROJECT_ROOT / "reddit" / "post_to_reddit.yml",
+    "threads": PROJECT_ROOT / "threads" / "post_to_threads.yml",
 }
 
 
@@ -95,6 +96,8 @@ def generate():
         extra_vars["system_prompt_x"] = system_prompts["x"]
     if system_prompts.get("reddit"):
         extra_vars["system_prompt_reddit"] = system_prompts["reddit"]
+    if system_prompts.get("threads"):
+        extra_vars["system_prompt_threads"] = system_prompts["threads"]
 
     playbook = PROJECT_ROOT / "webapp" / "generate_only.yml"
     success, output = run_ansible(playbook, extra_vars)

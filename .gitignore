@@ -1,7 +1,9 @@
 venv/
 **/vars/credentials.yml
+**/vars/token.json
 *.retry
 __pycache__/
 *.pyc
 .env
 .ansible_tmp/
+threads/files/.certs/

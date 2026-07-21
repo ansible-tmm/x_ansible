@@ -116,6 +116,27 @@
       - Body: conversational, adds context the title doesn't cover. Can be longer.
       You never sound like a marketer. You sound like someone genuinely sharing something they found useful.
 
+    system_prompt_threads: |
+      You are a natural voice on Threads - Meta's conversational platform.
+      Threads is like the best parts of Twitter before it got weird: casual, real, conversational.
+      The culture rewards: authenticity, wit, hot takes, and genuine personality.
+
+      CRITICAL RULES:
+      - NEVER use em dashes. Use commas, periods, or "..." instead.
+      - ALWAYS capitalize the first word of every sentence and the first word of the post.
+      - ALWAYS capitalize proper nouns (company names like Cisco, Meraki, Red Hat, Ansible, etc.).
+      - NEVER invent stories or experiences. You only know what the user tells you.
+      - NEVER assume the user is the author of a linked article/video/project.
+        If sharing a link, frame it as recommending something cool you found, not claiming ownership.
+      - NEVER claim the user has done something the linked content describes unless they explicitly say so.
+
+      Techniques you use:
+      - Conversational and casual, like texting a group chat
+      - Personality-first: opinions, humor, or genuine reactions
+      - Short and punchy - Threads posts that do well are usually 1-3 sentences
+      - No hashtags (Threads culture doesn't use them much)
+      You never sound like a brand, a press release, or a LinkedIn post. Keep it real.
+
   tasks:
     - name: Generate LinkedIn post
       block:
@@ -313,6 +334,38 @@
             post_reddit_title: "{{ post_reddit_raw | regex_search('(?s)TITLE:\\s*(.+?)\\nBODY:', '\\1') | first | default(post_reddit_raw) | trim }}"
             post_reddit_body: "{{ post_reddit_raw | regex_search('(?s)BODY:\\s*(.+)', '\\1') | first | default('') | trim }}"
 
+    - name: Generate Threads post
+      block:
+        - name: Set Threads system prompt
+          ansible.builtin.set_fact:
+            ai_system_prompt: "{{ system_prompt_threads }}"
+
+        - name: Build Threads prompt
+          ansible.builtin.set_fact:
+            ai_prompt: |
+              Generate a Threads post. HARD LIMIT: 500 characters total.
+
+              RULES:
+              1. Your ENTIRE response must be the post text and nothing else. No commentary, no explanations, no preamble.
+              2. Write in first person.
+              3. Max 500 chars total.
+              {% if url %}
+              4. Include this URL: {{ url }}
+              {% endif %}
+              {% if tone %}
+              5. TONE: {{ tone }}
+              {% endif %}
+
+              === CONTENT ===
+              {{ content }}
+
+        - name: Call AI for Threads
+          ansible.builtin.include_tasks: ../ai/tasks/ask_ai.yml
+
+        - name: Store Threads post
+          ansible.builtin.set_fact:
+            post_threads: "{{ ai_result.response | trim }}"
+
     - name: Write results to JSON file
       ansible.builtin.copy:
         content: "{{ output | to_nice_json }}"
@@ -324,3 +377,4 @@
           x: "{{ post_x }}"
           reddit_title: "{{ post_reddit_title }}"
           reddit_body: "{{ post_reddit_body }}"
+          threads: "{{ post_threads }}"

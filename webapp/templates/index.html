@@ -130,6 +130,28 @@ You generate TWO things: a title and a body.
 - Body: conversational, adds context the title doesn't cover. Can be longer.
 You never sound like a marketer. You sound like someone genuinely sharing something they found useful.</textarea>
                     </div>
+
+                    <div class="form-group">
+                        <label for="sp-threads">Threads</label>
+                        <textarea id="sp-threads" rows="7">You are a natural voice on Threads - Meta's conversational platform.
+Threads is like the best parts of Twitter before it got weird: casual, real, conversational.
+The culture rewards: authenticity, wit, hot takes, and genuine personality.
+
+CRITICAL RULES:
+- NEVER use em dashes. Use commas, periods, or "..." instead.
+- ALWAYS capitalize the first word of every sentence and the first word of the post.
+- ALWAYS capitalize proper nouns (company names like Cisco, Meraki, Red Hat, Ansible, etc.).
+- NEVER invent stories or experiences. You only know what the user tells you.
+- NEVER assume the user is the author of a linked article/video/project. If sharing a link, frame it as recommending something cool you found, not claiming ownership.
+- NEVER claim the user has done something the linked content describes unless they explicitly say so.
+
+Techniques you use:
+- Conversational and casual, like texting a group chat
+- Personality-first: opinions, humor, or genuine reactions
+- Short and punchy - Threads posts that do well are usually 1-3 sentences
+- No hashtags (Threads culture doesn't use them much)
+You never sound like a brand, a press release, or a LinkedIn post. Keep it real.</textarea>
+                    </div>
                 </div>
             </div>
         </section>
@@ -213,6 +235,19 @@ You never sound like a marketer. You sound like someone genuinely sharing someth
                 <textarea class="post-textarea" data-platform="reddit" data-max="40000" rows="5" placeholder="Reddit post body will appear here..."></textarea>
                 <button class="btn btn-publish" onclick="publishOne('reddit')">
                     <span class="btn-text">Publish to Reddit</span>
+                    <span class="spinner hidden"></span>
+                </button>
+                <div class="platform-status"></div>
+            </div>
+
+            <div class="platform-card" data-platform="threads">
+                <div class="platform-header">
+                    <span class="platform-label">Threads</span>
+                    <span class="char-counter" data-max="500"><span class="char-current">0</span> / 500</span>
+                </div>
+                <textarea class="post-textarea" data-platform="threads" data-max="500" rows="3" placeholder="Threads post will appear here..."></textarea>
+                <button class="btn btn-publish" onclick="publishOne('threads')">
+                    <span class="btn-text">Publish to Threads</span>
                     <span class="spinner hidden"></span>
                 </button>
                 <div class="platform-status"></div>
@@ -339,6 +374,7 @@ You never sound like a marketer. You sound like someone genuinely sharing someth
                 bluesky: document.getElementById('sp-bluesky').value.trim(),
                 x: document.getElementById('sp-x').value.trim(),
                 reddit: document.getElementById('sp-reddit').value.trim(),
+                threads: document.getElementById('sp-threads').value.trim(),
             };
 
             if (!content) {
@@ -394,9 +430,10 @@ You never sound like a marketer. You sound like someone genuinely sharing someth
                 log(`X: ${data.x.length} chars`, 'success');
                 if (data.reddit_title) log(`Reddit title: ${data.reddit_title.length} chars`, 'success');
                 if (data.reddit_body) log(`Reddit body: ${data.reddit_body.length} chars`, 'success');
+                if (data.threads) log(`Threads: ${data.threads.length} chars`, 'success');
 
                 // Populate textareas
-                const platforms = ['linkedin', 'bluesky', 'x'];
+                const platforms = ['linkedin', 'bluesky', 'x', 'threads'];
                 platforms.forEach(platform => {
                     const textarea = document.querySelector(`.post-textarea[data-platform="${platform}"]`);
                     textarea.value = data[platform] || '';
@@ -526,7 +563,7 @@ You never sound like a marketer. You sound like someone genuinely sharing someth
             setLoading(btn, true);
             log('Publishing to all platforms...', 'info');
 
-            const platforms = ['linkedin', 'bluesky', 'x', 'reddit'];
+            const platforms = ['linkedin', 'bluesky', 'x', 'reddit', 'threads'];
             const promises = platforms.map(p => publishOne(p));
             await Promise.all(promises);
 
