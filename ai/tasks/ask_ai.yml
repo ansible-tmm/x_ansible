@@ -44,15 +44,19 @@
       messages: "{{ _ai_messages }}"
       max_tokens: "{{ ai_max_tokens | int }}"
     return_content: true
-    status_code: [200, 400, 401, 403, 404, 429, 500, 503]
+    status_code: [200, 429, 500, 502, 503]
+    timeout: 30
   register: _ai_response
   no_log: true
+  retries: 2
+  delay: 3
+  until: _ai_response.status == 200
 
 - name: Handle AI API error
   when: _ai_response.status != 200
   ansible.builtin.fail:
     msg: >-
-      AI API returned status {{ _ai_response.status }}:
+      AI API returned status {{ _ai_response.status }} after retries:
       {{ _ai_response.json.error.message | default(_ai_response.json | default('Unknown error')) }}
 
 - name: Store AI response

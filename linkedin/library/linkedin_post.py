@@ -391,22 +391,10 @@ def run_module():
         }
 
         url = module.params["url"]
-        if url:
-            og_title, og_desc = fetch_og_metadata(url)
-            if og_title:
-                article = {"source": url, "title": og_title}
-                if og_desc:
-                    article["description"] = og_desc
-                # Upload thumbnail for rich preview card
-                thumb_url = fetch_thumbnail_url(url)
-                if thumb_url:
-                    image_urn = upload_thumbnail_to_linkedin(
-                        thumb_url, person_urn, access_token,
-                        module.params["api_version"],
-                    )
-                    if image_urn:
-                        article["thumbnail"] = image_urn
-                payload["content"] = {"article": article}
+        # Note: We intentionally do NOT attach the URL as content.article.
+        # When the URL is in the post text, LinkedIn auto-generates a full-width
+        # rich media preview card (the large thumbnail you see in the web UI).
+        # Explicitly attaching it as content.article creates a smaller card instead.
 
         resp = requests.post(POSTS_URL, headers=headers, json=payload, timeout=15)
         result["response_status"] = resp.status_code

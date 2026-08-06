@@ -413,12 +413,24 @@ You never sound like a brand, a press release, or a LinkedIn post. Keep it real.
                     log(`Generation FAILED after ${elapsed}s`, 'error');
                     log(`Error: ${data.error}`, 'error');
                     if (data.details) {
-                        // Extract key error lines from ansible output
                         const lines = data.details.split('\n');
-                        const errorLines = lines.filter(l =>
-                            l.includes('fatal:') || l.includes('FAILED') || l.includes('msg":')
+                        // Prioritize fatal/FAILED lines over generic assertion messages
+                        const fatalLines = lines.filter(l =>
+                            l.includes('fatal:') || l.includes('FAILED!')
                         ).slice(0, 3);
-                        errorLines.forEach(l => log(l.trim(), 'error'));
+                        if (fatalLines.length > 0) {
+                            fatalLines.forEach(l => log(l.trim(), 'error'));
+                        } else {
+                            // Fallback: show last meaningful lines
+                            const msgLines = lines.filter(l =>
+                                l.includes('msg":') && !l.includes('All assertions passed')
+                            ).slice(-3);
+                            if (msgLines.length > 0) {
+                                msgLines.forEach(l => log(l.trim(), 'error'));
+                            } else {
+                                log('No detailed error info available. The AI API may be temporarily unavailable.', 'error');
+                            }
+                        }
                     }
                     showError(data.error);
                     return;

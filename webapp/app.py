@@ -101,7 +101,7 @@ def generate():
         extra_vars["system_prompt_threads"] = system_prompts["threads"]
 
     playbook = PROJECT_ROOT / "webapp" / "generate_only.yml"
-    success, output = run_ansible(playbook, extra_vars)
+    success, output = run_ansible(playbook, extra_vars, timeout=180)
 
     if not success:
         try:

@@ -76,7 +76,6 @@ import os
 import re
 import traceback
 from datetime import datetime, timezone
-from html.parser import HTMLParser
 from urllib.parse import urljoin
 
 from ansible.module_utils.basic import AnsibleModule
@@ -165,32 +164,6 @@ def parse_facets(text):
     return facets
 
 
-class OGParser(HTMLParser):
-    """Minimal HTML parser to extract OpenGraph meta tags."""
-
-    def __init__(self):
-        super().__init__()
-        self.og = {}
-        self.title = ""
-        self._in_title = False
-
-    def handle_starttag(self, tag, attrs):
-        if tag == "title":
-            self._in_title = True
-        if tag == "meta":
-            attr_dict = dict(attrs)
-            prop = attr_dict.get("property", "") or attr_dict.get("name", "")
-            content = attr_dict.get("content", "")
-            if prop.startswith("og:") and content:
-                self.og[prop[3:]] = content
-
-    def handle_data(self, data):
-        if self._in_title:
-            self.title += data
-
-    def handle_endtag(self, tag):
-        if tag == "title":
-            self._in_title = False
 
 
 def fetch_link_card(url):
@@ -199,7 +172,7 @@ def fetch_link_card(url):
         resp = requests.get(
             url,
             timeout=10,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; BlueSkyBot/1.0)"},
+            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"},
             allow_redirects=True,
         )
         resp.raise_for_status()
@@ -210,17 +183,38 @@ def fetch_link_card(url):
     if "html" not in content_type:
         return None
 
-    parser = OGParser()
-    try:
-        parser.feed(resp.text[:50000])
-    except Exception:
-        return None
+    # Use regex to find OG tags - more reliable than HTML parsing for large pages
+    # where meta tags may appear far into the document (e.g. redhat.com at 200K+)
+    html = resp.text
+    og_data = {}
+    title = ""
 
-    title = parser.og.get("title", "") or parser.title.strip()
-    description = parser.og.get("description", "")
-    image_url = parser.og.get("image", "")
+    for match in re.finditer(
+        r'<meta\s+(?:property|name)=["\']og:(\w+)["\']\s+content=["\']([^"\']*)["\']',
+        html,
+        re.IGNORECASE,
+    ):
+        og_data[match.group(1)] = match.group(2)
 
-    if not title:
+    # Also try content-first attribute order
+    for match in re.finditer(
+        r'<meta\s+content=["\']([^"\']*?)["\']\s+(?:property|name)=["\']og:(\w+)["\']',
+        html,
+        re.IGNORECASE,
+    ):
+        if match.group(2) not in og_data:
+            og_data[match.group(2)] = match.group(1)
+
+    # Fallback title from <title> tag
+    title_match = re.search(r'<title[^>]*>([^<]+)</title>', html, re.IGNORECASE)
+    if title_match:
+        title = title_match.group(1).strip()
+
+    og_title = og_data.get("title", "") or title
+    description = og_data.get("description", "")
+    image_url = og_data.get("image", "")
+
+    if not og_title:
         return None
 
     if image_url and "://" not in image_url:
@@ -228,10 +222,37 @@ def fetch_link_card(url):
 
     return {
         "uri": url,
-        "title": title[:300],
+        "title": og_title[:300],
         "description": description[:1000],
         "image_url": image_url,
     }
+
+
+def _compress_image(img_data, max_bytes=900_000):
+    """Compress an image to fit under max_bytes using PIL. Returns (bytes, content_type) or (None, None)."""
+    try:
+        from io import BytesIO
+        from PIL import Image
+
+        img = Image.open(BytesIO(img_data))
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+
+        # Resize if very large
+        max_dim = 1200
+        if max(img.size) > max_dim:
+            img.thumbnail((max_dim, max_dim), Image.LANCZOS)
+
+        # Try decreasing quality until under limit
+        for quality in (85, 70, 55, 40):
+            buf = BytesIO()
+            img.save(buf, format="JPEG", quality=quality)
+            if buf.tell() <= max_bytes:
+                return buf.getvalue(), "image/jpeg"
+
+        return None, None
+    except Exception:
+        return None, None
 
 
 def upload_blob(pds_url, session, image_url):
@@ -240,7 +261,7 @@ def upload_blob(pds_url, session, image_url):
         img_resp = requests.get(
             image_url,
             timeout=10,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; BlueSkyBot/1.0)"},
+            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"},
         )
         img_resp.raise_for_status()
     except Exception:
@@ -249,9 +270,11 @@ def upload_blob(pds_url, session, image_url):
     content_type = img_resp.headers.get("content-type", "image/jpeg")
     img_data = img_resp.content
 
-    # Bluesky blob limit is 1MB
+    # Bluesky blob limit is 1MB - compress if needed
     if len(img_data) > 1_000_000:
-        return None
+        img_data, content_type = _compress_image(img_data)
+        if img_data is None:
+            return None
 
     try:
         blob_resp = requests.post(
