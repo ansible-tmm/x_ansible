@@ -299,12 +299,11 @@ def run_module():
 
         url = module.params["url"]
         if url:
-            # Article card is small but CLICKABLE — clicking it opens the URL.
-            # LinkedIn's API doesn't support the large card format that the web
-            # UI uses, but a clickable card is better than a non-clickable image.
-            article = {"source": url, "title": url}
+            # LinkedIn's documented article post pattern: source + title +
+            # description + thumbnail. Card rendering size is controlled by
+            # LinkedIn's platform — no API parameter forces the large layout.
+            article = {"source": url, "title": url, "description": ""}
 
-            # Fetch a proper title via oEmbed (YouTube) or page scraping
             try:
                 if "youtu.be" in url or "youtube.com" in url:
                     oembed_resp = requests.get(
@@ -312,15 +311,29 @@ def run_module():
                         timeout=5,
                     )
                     if oembed_resp.status_code == 200:
-                        article["title"] = oembed_resp.json().get("title", url)
+                        data = oembed_resp.json()
+                        article["title"] = data.get("title", url)
+                        author = data.get("author_name", "")
+                        if author:
+                            article["description"] = f"by {author}"
                 else:
                     page_resp = requests.get(url, timeout=10, headers={
                         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
                     }, allow_redirects=True)
                     if page_resp.status_code == 200:
-                        m = re.search(r'<title[^>]*>([^<]+)</title>', page_resp.text[:300000], re.IGNORECASE)
+                        html = page_resp.text[:300000]
+                        m = re.search(r'<title[^>]*>([^<]+)</title>', html, re.IGNORECASE)
                         if m:
                             article["title"] = m.group(1).strip()[:200]
+                        m = re.search(
+                            r'<meta\s+(?:property|name)=["\'](?:og:description|description)["\']\s+content=["\']([^"\']+)["\']',
+                            html, re.IGNORECASE,
+                        ) or re.search(
+                            r'<meta\s+content=["\']([^"\']+)["\']\s+(?:property|name)=["\'](?:og:description|description)["\']',
+                            html, re.IGNORECASE,
+                        )
+                        if m:
+                            article["description"] = m.group(1).strip()[:200]
             except Exception:
                 pass
 
