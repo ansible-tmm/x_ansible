@@ -299,8 +299,31 @@ def run_module():
 
         url = module.params["url"]
         if url:
-            # Use image post format for full-width display. LinkedIn's article
-            # card via API always renders small; image posts render full-width.
+            # Article card is small but CLICKABLE — clicking it opens the URL.
+            # LinkedIn's API doesn't support the large card format that the web
+            # UI uses, but a clickable card is better than a non-clickable image.
+            article = {"source": url, "title": url}
+
+            # Fetch a proper title via oEmbed (YouTube) or page scraping
+            try:
+                if "youtu.be" in url or "youtube.com" in url:
+                    oembed_resp = requests.get(
+                        f"https://www.youtube.com/oembed?url={url}&format=json",
+                        timeout=5,
+                    )
+                    if oembed_resp.status_code == 200:
+                        article["title"] = oembed_resp.json().get("title", url)
+                else:
+                    page_resp = requests.get(url, timeout=10, headers={
+                        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+                    }, allow_redirects=True)
+                    if page_resp.status_code == 200:
+                        m = re.search(r'<title[^>]*>([^<]+)</title>', page_resp.text[:300000], re.IGNORECASE)
+                        if m:
+                            article["title"] = m.group(1).strip()[:200]
+            except Exception:
+                pass
+
             thumb_url = fetch_thumbnail_url(url)
             if thumb_url:
                 image_urn = upload_thumbnail_to_linkedin(
@@ -308,7 +331,9 @@ def run_module():
                     module.params["api_version"],
                 )
                 if image_urn:
-                    payload["content"] = {"media": {"id": image_urn}}
+                    article["thumbnail"] = image_urn
+
+            payload["content"] = {"article": article}
 
         resp = requests.post(POSTS_URL, headers=headers, json=payload, timeout=15)
         result["response_status"] = resp.status_code
