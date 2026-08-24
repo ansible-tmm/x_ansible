@@ -33,7 +33,7 @@
     publish: false
     tone: ""
     ai_api_key: "{{ lookup('ansible.builtin.env', 'MAAS') }}"
-    ai_model: "{{ model | default('claude-haiku-4-5') }}"
+    ai_model: "{{ model | default('claude-sonnet-4-6') }}"
     ai_max_tokens: "{{ max_tokens | default(1024) }}"
     ai_api_url: "https://maas-rhdp.apps.maas.redhatworkshops.io/v1/chat/completions"
 
